@@ -103,15 +103,17 @@ async def run_daily_job(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
 
 async def scheduler_loop(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
                          events_kb=None) -> None:
-    last_run_date = None
     while True:
         try:
             now = now_local(cfg)
             hhmm = now.strftime("%H:%M")
             target = await db.setting_get("digest_time", cfg.default_digest_time)
             enabled = await db.setting_get("notifications_enabled", "1") != "0"
-            if enabled and hhmm == target and last_run_date != now.date():
-                last_run_date = now.date()
+            today_iso = now.date().isoformat()
+            already_sent = await db.setting_get("last_digest_date", "") == today_iso
+            if enabled and hhmm == target and not already_sent:
+                # Отмечаем дату ДО отправки, чтобы рестарт бота не вызвал повтор
+                await db.setting_set("last_digest_date", today_iso)
                 await run_daily_job(bot, db, auth, cfg, events_kb)
         except Exception:  # noqa: BLE001
             log.exception("Ошибка в цикле планировщика")
