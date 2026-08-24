@@ -36,6 +36,7 @@ class RecordingBot(Bot):
     def __init__(self, token: str):
         super().__init__(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         self.sent: list[tuple[str, str]] = []
+        self.markups: list[list[list[str]]] = []  # тексты кнопок по строкам
 
     async def __call__(self, method, request_timeout: int | None = None):
         name = type(method).__name__
@@ -43,6 +44,12 @@ class RecordingBot(Bot):
         if text is None:
             text = str(getattr(method, "action", "") or "")
         self.sent.append((name, str(text or "")))
+        markup = getattr(method, "reply_markup", None)
+        rows = []
+        ik = getattr(markup, "inline_keyboard", None) if markup is not None else None
+        if ik:
+            rows = [[b.text for b in row] for row in ik]
+        self.markups.append(rows)
         return True
 
 
@@ -112,6 +119,9 @@ async def main() -> int:
         sends = [t for name, t in bot.sent if name == "SendMessage"]
         return sends[-n:]
 
+    def last_markup() -> list[list[str]]:
+        return bot.markups[-1] if bot.markups else []
+
     # 1. /start -> меню
     await send("/start")
     check("меню открывается", any("HR" in t for t in last_texts()))
@@ -124,6 +134,10 @@ async def main() -> int:
     await tap("empl:all:0")
     check("список всех сотрудников", any("Всего:" in t for t in last_texts()),
           str(last_texts(1)))
+    grid = last_markup()
+    check("сетка списка 2 в ряд",
+          bool(grid) and len(grid[0]) == 2,
+          str(grid[:2]))
 
     # 4. работающие
     await tap("empl:act:0")
@@ -361,6 +375,55 @@ async def main() -> int:
     check("после восстановления смена роли работает",
           restored_other is not None and restored_other.role == ROLE_MANAGER)
     await db.user_delete(OTHER_UID)
+
+    # 18b. Мастер добавления: кнопка «Нет руководителя» (до предпросмотра, без записи)
+    await tap("add")
+    await send("Е2е Без Руководителя")
+    await send("+7 7011122233")
+    if dicts.departments:
+        await tap("addd:dept:0")
+    else:
+        await send("IT-отдел")
+    if dicts.positions:
+        await tap("addd:pos:0")
+    else:
+        await send("Разработчик")
+    if dicts.branches:
+        await tap("addd:branch:0")
+    else:
+        await send("Центральный офис")
+    sup_markup = last_markup()
+    check("кнопка Нет руководителя в мастере",
+          any("Нет руководителя" in b for row in sup_markup for b in row),
+          str(sup_markup))
+    await tap("addd:supervisor:none")
+    check("после нет руководителя шаг даты рождения",
+          any("рождения" in t.lower() for t in last_texts()), str(last_texts(1)))
+    await send("02.02.1995")
+    await send(fmt_date(date.today() - timedelta(days=5)))
+    await tap("addp:m3")
+    await tap("addg:F")
+    await tap("addskip_comment")
+    preview_tail = [t for name, t in bot.sent if name == "SendMessage"][-1]
+    check("в превью руководитель пустой", "Руководитель: —" in preview_tail,
+          preview_tail)
+    await tap("addcancel")
+
+    # 18c. Часовой пояс в настройках
+    from bot.utils.dates import normalize_timezone as _ntz
+    check("нормализация пояса: МСК",
+          _ntz("мск") == "Europe/Moscow" and _ntz("+3") == "Etc/GMT-3")
+
+    await tap("set")
+    tz_markup = None
+    await tap("set:tz")
+    tz_markup = last_markup()
+    check("меню выбора пояса открылось",
+          any("МСК" in b for row in tz_markup for b in row), str(tz_markup))
+    await tap("tzp:0")
+    saved_tz = await db.setting_get("timezone", "")
+    check("пояс сохранен в настройках",
+          saved_tz == "Europe/Moscow", f"saved={saved_tz}")
 
     # 19. остальные периоды отчета
     for kind, label in (("rep:t", "Сегодня"), ("rep:w", "Эта неделя"), ("rep:pm", "Прошлый месяц")):

@@ -118,3 +118,50 @@ def birthday_occurrence(bday: date, today: date) -> date:
         except ValueError:
             occ = date(today.year + 1, 3, 1)
     return occ
+
+
+# --------------------------------------------------------------------------
+# Часовые пояса
+# --------------------------------------------------------------------------
+
+COMMON_TIMEZONES = [
+    ("Europe/Moscow", "МСК — Москва (UTC+3)"),
+    ("Europe/Kaliningrad", "Калининград (UTC+2)"),
+    ("Europe/Samara", "Самара (UTC+4)"),
+    ("Asia/Yekaterinburg", "Екатеринбург (UTC+5)"),
+    ("Asia/Almaty", "Алматы (UTC+5)"),
+    ("Asia/Tashkent", "Ташкент (UTC+5)"),
+    ("Asia/Novosibirsk", "Новосибирск (UTC+7)"),
+    ("Asia/Vladivostok", "Владивосток (UTC+10)"),
+]
+
+_TZ_ALIASES = {
+    "мск": "Europe/Moscow",
+    "msk": "Europe/Moscow",
+    "москва": "Europe/Moscow",
+    "moscow": "Europe/Moscow",
+}
+
+
+def normalize_timezone(raw: str) -> str | None:
+    """IANA-имя, псевдоним («МСК») или смещение UTC+N / -N -> каноническое имя."""
+    import re
+    from zoneinfo import ZoneInfo
+
+    value = (raw or "").strip()
+    if not value:
+        return None
+    low = value.lower().replace("ё", "е")
+    if low in _TZ_ALIASES:
+        return _TZ_ALIASES[low]
+    m = re.fullmatch(r"(?:utc)?\s*([+-])?\s*(\d{1,2})(?::00)?", low)
+    if m:
+        sign, hours = m.group(1) or "+", int(m.group(2))
+        if 0 <= hours <= 14:
+            # В Etc/GMT знак инвертирован: UTC+3 == Etc/GMT-3
+            return f"Etc/GMT{'+' if sign == '-' else '-'}{hours}"
+    try:
+        ZoneInfo(value)
+        return value
+    except Exception:  # noqa: BLE001
+        return None

@@ -54,23 +54,34 @@ def dict_list_keyboard(prefix: str, values: list[str], back_cb: str,
 
 def employees_page(items: list[tuple[int, object]], page: int, total_pages: int,
                    filter_key: str) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    for num, e in items:
+    from aiogram.utils.keyboard import InlineKeyboardButton  # noqa: PLC0415
+
+    def name_btn(num: int, e):
         label = f"{num}. {e.fio}"
         if len(label) > 60:
             label = label[:57] + "…"
-        kb.button(text=label, callback_data=f"card:{e.eid}")
-    kb.adjust(1)
-    kb.row()
+        return InlineKeyboardButton(text=label, callback_data=f"card:{e.eid}")
+
+    kb = InlineKeyboardBuilder()
+    # Сетка 2 в ряд — крупные кнопки вместо полной ширины
+    names = [name_btn(num, e) for num, e in items]
+    for i in range(0, len(names), 2):
+        kb.row(*names[i:i + 2])
+    # пагинация
+    nav: list[InlineKeyboardButton] = []
     if page > 0:
-        kb.button(text="◀ Предыдущая", callback_data=f"empl:{filter_key}:{page - 1}")
+        nav.append(InlineKeyboardButton(text="◀ Предыдущая",
+                                        callback_data=f"empl:{filter_key}:{page - 1}"))
     if total_pages > 1:
-        kb.button(text=f"{page + 1}/{total_pages}", callback_data="noop")
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}",
+                                        callback_data="noop"))
     if page < total_pages - 1:
-        kb.button(text="Следующая ▶", callback_data=f"empl:{filter_key}:{page + 1}")
-    kb.row()
-    kb.button(text="⬅ Фильтры", callback_data="emp")
-    kb.button(text="🏠 Меню", callback_data=CB_MENU)
+        nav.append(InlineKeyboardButton(text="Следующая ▶",
+                                        callback_data=f"empl:{filter_key}:{page + 1}"))
+    if nav:
+        kb.row(*nav)
+    kb.row(InlineKeyboardButton(text="⬅ Фильтры", callback_data="emp"),
+           InlineKeyboardButton(text="🏠 Меню", callback_data=CB_MENU))
     return kb.as_markup()
 
 
@@ -114,15 +125,19 @@ EDITABLE_FIELDS = {
 
 
 def dict_picker(prefix: str, values: list[str], cancel_cb: str = "addcancel",
-                cancel_text: str = "❌ Отменить") -> InlineKeyboardMarkup:
+                cancel_text: str = "❌ Отменить",
+                none_cb: str | None = None,
+                none_text: str = "🚫 Нет руководителя") -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for i, v in enumerate(values):
         kb.button(text=v[:40], callback_data=f"{prefix}:{i}")
     kb.row()
     kb.button(text="✍️ Своё значение", callback_data=f"{prefix}:manual")
+    if none_cb:
+        kb.button(text=none_text, callback_data=none_cb)
     kb.row()
     kb.button(text=cancel_text, callback_data=cancel_cb)
-    kb.adjust(2, 1, 1)
+    kb.adjust(2, 2, 1)
     return kb.as_markup()
 
 
@@ -214,13 +229,30 @@ def report_periods() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def settings_keyboard(digest_time: str, notif_on: bool) -> InlineKeyboardMarkup:
+def settings_keyboard(digest_time: str, notif_on: bool,
+                      tz: str | None = None) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="👤 Пользователи и доступы", callback_data="set:users")
     kb.button(text=f"⏰ Время дайджеста: {digest_time}", callback_data="set:dtime")
     kb.button(text=f"🔔 Уведомления: {'вкл' if notif_on else 'выкл'}", callback_data="set:notif")
+    if tz:
+        kb.button(text=f"🌍 Часовой пояс: {tz}", callback_data="set:tz")
     kb.button(text="📚 Справочники", callback_data="set:dicts")
     kb.button(text="⬅ В меню", callback_data=CB_MENU)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def timezone_keyboard(current: str) -> InlineKeyboardMarkup:
+    from bot.utils.dates import COMMON_TIMEZONES
+    kb = InlineKeyboardBuilder()
+    for i, (name, label) in enumerate(COMMON_TIMEZONES):
+        mark = "✅ " if name == current else ""
+        kb.button(text=f"{mark}{label}", callback_data=f"tzp:{i}")
+    kb.row()
+    kb.button(text="✍️ Свой вариант (IANA или UTC+N)", callback_data="set:tzt")
+    kb.row()
+    kb.button(text="⬅ К настройкам", callback_data="set")
     kb.adjust(1)
     return kb.as_markup()
 

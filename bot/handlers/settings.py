@@ -27,6 +27,7 @@ class SetStates(StatesGroup):
     waiting_role = State()
     waiting_time = State()
     waiting_dict_value = State()
+    waiting_tz = State()
 
 
 async def _guard(cb: CallbackQuery, user: User) -> bool:
@@ -41,24 +42,27 @@ async def _guard(cb: CallbackQuery, user: User) -> bool:
 # --------------------------------------------------------------------------
 
 @router.callback_query(F.data == "set")
-async def cb_settings(cb: CallbackQuery, state: FSMContext, db: SheetsDB, user: User):
+async def cb_settings(cb: CallbackQuery, state: FSMContext, db: SheetsDB, cfg, user: User):
     if not await _guard(cb, user):
         return
     await state.clear()
     await cb.answer()
     digest_time = await db.setting_get("digest_time", "09:00")
     notif_on = await db.setting_get("notifications_enabled", "1") != "0"
+    tz = await db.setting_get("timezone", cfg.timezone)
     text = (
         "⚙ Настройки\n\n"
         f"⏰ Ежедневный дайджест: {digest_time}\n"
         f"🔔 Уведомления: {'включены' if notif_on else 'выключены'}\n"
+        f"🌍 Часовой пояс: {tz}\n"
         "📚 Справочники: отделы, должности, филиалы, руководители, причины"
     )
-    await cb.message.answer(text, reply_markup=kb.settings_keyboard(digest_time, notif_on))
+    await cb.message.answer(text,
+                            reply_markup=kb.settings_keyboard(digest_time, notif_on, tz))
 
 
 @router.callback_query(F.data == "set:notif")
-async def cb_toggle_notif(cb: CallbackQuery, db: SheetsDB, user: User):
+async def cb_toggle_notif(cb: CallbackQuery, db: SheetsDB, cfg, user: User):
     if not await _guard(cb, user):
         return
     cur = await db.setting_get("notifications_enabled", "1")
@@ -66,9 +70,10 @@ async def cb_toggle_notif(cb: CallbackQuery, db: SheetsDB, user: User):
     await db.setting_set("notifications_enabled", new_val)
     await cb.answer(f"Уведомления {'включены' if new_val == '1' else 'выключены'}")
     digest_time = await db.setting_get("digest_time", "09:00")
+    tz = await db.setting_get("timezone", cfg.timezone)
     await cb.message.answer(
         f"🔔 Уведомления: {'включены' if new_val == '1' else 'выключены'}",
-        reply_markup=kb.settings_keyboard(digest_time, new_val != "0"))
+        reply_markup=kb.settings_keyboard(digest_time, new_val != "0", tz))
 
 
 @router.callback_query(F.data == "set:dtime")
@@ -98,6 +103,48 @@ async def msg_set_time(message: Message, state: FSMContext, db: SheetsDB):
         return
     await state.clear()
     await message.answer(f"✅ Время дайджеста: {hhmm}")
+
+
+# --------------------------------------------------------------------------
+# Часовой пояс
+# --------------------------------------------------------------------------
+
+@router.callback_query(F.data == "set:tz")
+async def cb_set_tz(cb: CallbackQuery, db: SheetsDB, cfg, user: User):
+    if not await _guard(cb, user):
+        return
+    await cb.answer()
+    current = await db.setting_get("timezone", cfg.timezone)
+    await cb.message.answer(
+        f"🌍 Текущий часовой пояс: {current}\nВыберите пояс из списка или введите свой:",
+        reply_markup=kb.timezone_keyboard(current))
+
+
+@router.callback_query(F.data.startswith("tzp:"))
+async def cb_tz_pick(cb: CallbackQuery, db: SheetsDB, auth, user: User):
+    if not await _guard(cb, user):
+        return
+    from bot.utils.dates import COMMON_TIMEZONES
+    idx = int(cb.data.split(":")[1])
+    name, label = COMMON_TIMEZONES[idx]
+    await db.setting_set("timezone", name)
+    await cb.answer(f"Часовой пояс: {name}")
+    log.info("Часовой пояс изменен на %s (%s)", name, user.uid)
+    await cb.message.answer(f"✅ Часовой пояс: {label}", reply_markup=None)
+
+
+@router.message(StateFilter(SetStates.waiting_tz), F.text)
+async def msg_tz_custom(message: Message, state: FSMContext, db: SheetsDB):
+    from bot.utils.dates import normalize_timezone
+    name = normalize_timezone(message.text)
+    if not name:
+        await message.answer(
+            "Не понял пояс. Примеры: Europe/Moscow, МСК, UTC+3, +3. Попробуйте еще раз:")
+        return
+    await state.clear()
+    await db.setting_set("timezone", name)
+    log.info("Часовой пояс изменен на %s (%s)", name, message.from_user.id)
+    await message.answer(f"✅ Часовой пояс: {name}")
 
 
 # --------------------------------------------------------------------------

@@ -55,6 +55,6 @@ def load_config() -> Config:
         spreadsheet_id=sheet_id,
         credentials_file=str(creds_path),
         admin_ids=_parse_admin_ids(os.getenv("ADMIN_IDS") or ""),
-        timezone=(os.getenv("TIMEZONE") or "Asia/Almaty").strip(),
+        timezone=(os.getenv("TIMEZONE") or "Europe/Moscow").strip(),
         default_digest_time=(os.getenv("DEFAULT_DIGEST_TIME") or "09:00").strip(),
     )

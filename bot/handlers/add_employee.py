@@ -59,7 +59,7 @@ def preview_text(d: dict) -> str:
         f"Отдел: {d.get('dept', '—')}",
         f"Должность: {d.get('pos', '—')}",
         f"Филиал: {d.get('branch', '—')}",
-        f"Руководитель: {d.get('supervisor', '—')}",
+        f"Руководитель: {d.get('supervisor') or '—'}",
         f"Дата рождения: {d.get('birthday', '—')}",
         f"Дата приема: {d.get('hire_date', '—')}",
         f"Испытательный срок: {proba}",
@@ -84,8 +84,9 @@ async def ask_step(cb_or_msg, state: FSMContext, step: str, db: SheetsDB, edit_m
             "supervisor": dicts.supervisors,
         }[step]
         title = DICT_STEPS[step]
-        markup = kb.dict_picker(f"addd:{step}", values) if values else kb.simple_cancel_keyboard("addcancel")
-        hint = "" if values else "\nСправочник пуст — просто напишите значение текстом."
+        none_cb = "addd:supervisor:none" if step == "supervisor" else None
+        markup = kb.dict_picker(f"addd:{step}", values, none_cb=none_cb)
+        hint = "" if values else "\nСправочник пуст — напишите значение текстом."
         await send(f"{prefix}{title}:{hint}\nВыберите или введите:", markup)
     elif step == "probation":
         await send(f"{prefix}Испытательный срок:",
@@ -178,6 +179,9 @@ async def cb_add_dict_pick(cb: CallbackQuery, state: FSMContext, db: SheetsDB):
     if val == "manual":
         await cb.message.answer("✍️ Введите значение текстом:")
         await cb.answer()
+        return
+    if key == "supervisor" and val == "none":
+        await _save_and_next(cb, state, db, "supervisor", "")
         return
     dicts = await db.dicts()
     values = {"dept": dicts.departments, "pos": dicts.positions,

@@ -8,6 +8,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import bot.keyboards as kb
 from bot.handlers.employees import card_text, find_emp
@@ -82,6 +83,18 @@ def _next_step(cur: str) -> str | None:
     return order[idx + 1] if idx + 1 < len(order) else None
 
 
+def _step_keyboard(field: str):
+    """Клавиатура для шага перевода; у руководителя есть вариант «Нет»."""
+    if field == "supervisor":
+        b = InlineKeyboardBuilder()
+        b.button(text="⏭ Пропустить", callback_data="xfskip_sup")
+        b.button(text="🚫 Нет руководителя", callback_data="xfnone_sup")
+        b.button(text="❌ Отмена", callback_data="xfcan")
+        b.adjust(1)
+        return b.as_markup()
+    return kb.simple_cancel_keyboard(f"xfskip_{field}")
+
+
 async def _store_and_next(message_or_cb, state, field, value):
     data = await state.get_data()
     changes = data.setdefault("changes", {})
@@ -98,8 +111,11 @@ async def _store_and_next(message_or_cb, state, field, value):
     if nxt:
         titles = dict(FIELDS)
         await state.set_state(STEP_STATES[nxt])
-        await send(f"{titles[nxt]}: введите новое значение (или «Пропустить»):",
-                   reply_markup=kb.simple_cancel_keyboard(f"xfskip_{nxt}"))
+        if nxt == "supervisor":
+            text = f"{titles[nxt]}: введите новое значение или выберите вариант:"
+        else:
+            text = f"{titles[nxt]}: введите новое значение (или «Пропустить»):"
+        await send(text, reply_markup=_step_keyboard(nxt))
     else:
         await state.set_state(Transfer.date)
         await send("📅 Дата изменения (ДД.ММ.ГГГГ):",
@@ -116,6 +132,19 @@ async def cb_xfer_skip(cb: CallbackQuery, state: FSMContext):
         await cb.answer()
         return
     await _store_and_next(cb, state, field, "")
+
+
+@router.callback_query(StateFilter(Transfer.sup), F.data == "xfnone_sup")
+async def cb_xfer_none_sup(cb: CallbackQuery, state: FSMContext):
+    """Явно обнулить руководителя при переводе."""
+    data = await state.get_data()
+    changes = data.setdefault("changes", {})
+    changes["supervisor"] = ""
+    await state.update_data(changes=changes)
+    await cb.answer("Руководитель убран")
+    await state.set_state(Transfer.date)
+    await cb.message.answer("📅 Дата изменения (ДД.ММ.ГГГГ):",
+                            reply_markup=kb.today_or_input_keyboard("xftoday", "xfcan"))
 
 
 @router.callback_query(StateFilter(Transfer.date), F.data == "xftoday")
