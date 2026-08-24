@@ -1,0 +1,17 @@
+# Секреты
+.env
+service_account*.json
+credentials*.json
+
+# Временные файлы
+logs/
+backups/
+tz_full.txt
+extract_tz.py
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
