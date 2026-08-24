@@ -30,7 +30,8 @@ class Transfer(StatesGroup):
     confirm = State()
 
 
-STEP_STATES = {"pos": Transfer.pos, "dept": Transfer.dept, "sup": Transfer.sup}
+STEP_STATES = {"pos": Transfer.pos, "dept": Transfer.dept,
+               "supervisor": Transfer.sup}
 
 
 @router.callback_query(F.data == "xfer")
@@ -76,7 +77,7 @@ async def cb_xfer_cancel(cb: CallbackQuery, state: FSMContext):
 
 
 def _next_step(cur: str) -> str | None:
-    order = ["pos", "dept", "sup"]
+    order = ["pos", "dept", "supervisor"]
     idx = order.index(cur)
     return order[idx + 1] if idx + 1 < len(order) else None
 
@@ -105,10 +106,11 @@ async def _store_and_next(message_or_cb, state, field, value):
                    reply_markup=kb.today_or_input_keyboard("xftoday", "xfcan"))
 
 
-@router.callback_query(StateFilter({Transfer.pos, Transfer.dept, Transfer.sup}),
+@router.callback_query(StateFilter(Transfer.pos, Transfer.dept, Transfer.sup),
                        F.data.startswith("xfskip_"))
 async def cb_xfer_skip(cb: CallbackQuery, state: FSMContext):
-    field = cb.data.split("_", 1)[1]
+    SKIP_TO_FIELD = {"pos": "pos", "dept": "dept", "sup": "supervisor"}
+    field = SKIP_TO_FIELD[cb.data.split("_", 1)[1]]
     await _store_and_next(cb, state, field, "")
 
 

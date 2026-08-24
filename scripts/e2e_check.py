@@ -211,8 +211,97 @@ async def main() -> int:
     await tap("addskip_comment")
     check("предпросмотр", any("Проверьте данные" in t for t in last_texts()),
           str(last_texts(1)))
-    await tap("addcancel")
-    check("отмена мастера", any("отменен" in t.lower() for t in last_texts()))
+    await tap("addsave")
+    saved_tail = [t for name, t in bot.sent if name == "SendMessage"][-2:]
+    check("сотрудник сохранен", any("сохранен" in t.lower() for t in saved_tail),
+          str(saved_tail))
+
+    new_emp = None
+    want_phone = "+77015556677"
+    for _ in range(10):
+        for e in await db.get_employees(fresh=True):
+            if e.phone.replace(" ", "") == want_phone:
+                new_emp = e
+                break
+        if new_emp:
+            break
+        await asyncio.sleep(0.5)
+    check("новый сотрудник в таблице", new_emp is not None)
+
+    # 14. полный цикл перевода со пропусками (без записи в таблицу)
+    other = new_emp or next((e for e in emps if e.is_active and e.eid != target.eid), target)
+    await tap(f"xfer:{other.eid}")
+    check("перевод: запрос должности", any("олжность" in t for t in last_texts()))
+    await tap("xfskip_pos")
+    check("перевод: запрос отдела", any("тдел" in t for t in last_texts()))
+    await tap("xfskip_dept")
+    check("перевод: запрос руководителя", any("уководител" in t for t in last_texts()))
+    await tap("xfskip_sup")
+    check("перевод: дата", any("ата изменения" in t for t in last_texts()))
+    await tap("xftoday")
+    check("перевод: ничего не менялось", any("Ничего не изменено" in t
+                                             for t in last_texts()), str(last_texts(1)))
+
+    # 15. перевод с реальным изменением должности (запись в историю)
+    await tap(f"xfer:{other.eid}")
+    await send("Старший тест-инженер")
+    await tap("xfskip_dept")
+    await tap("xfskip_sup")
+    await tap("xftoday")
+    check("перевод: подтверждение", any("Проверьте изменения" in t for t in last_texts()))
+    await tap("xfd")
+    check("перевод применен", any("Перевод оформлен" in t for t in last_texts()))
+    hist_after = await db.get_history(other.eid)
+    check("история перевода записана",
+          any(r[3] == "перевод" and r[5] == "Старший тест-инженер" for r in hist_after))
+
+    # 16. увольнение с подтверждением (полный путь записи)
+    await tap(f"fire:{other.eid}")
+    check("увольнение: выбор причины", any("ыберите причину" in t for t in last_texts()))
+    await tap("fri:0")
+    check("увольнение: дата", any("ата увольнения" in t for t in last_texts()))
+    await tap("frdtoday")
+    check("увольнение: комментарий", any("омментарий" in t for t in last_texts()))
+    await tap("fcskip")
+    check("увольнение: предпросмотр", any("Проверьте данные увольнения" in t
+                                          for t in last_texts()))
+    await tap("fgo")
+    fired_db = await db.find_employee_by_id(other.eid)
+    check("статус Уволен в таблице",
+          fired_db is not None and fired_db.status == "Уволен")
+    dis = await db.get_dismissals()
+    check("запись в листе Увольнения",
+          any(r and r[0].strip() == other.eid for r in dis))
+
+    # 17. редактирование карточки: открыть список полей и вернуться
+    await tap(f"edit:{target.eid}")
+    check("редактирование: список полей", any("Что изменить" in t for t in last_texts()))
+    await tap(f"card:{target.eid}")
+    check("возврат к карточке", any("Стаж" in t for t in last_texts()))
+
+    # 18. настройки (панель, пользователи, справочники)
+    await tap("set")
+    check("панель настроек", any("астройки" in t for t in last_texts()))
+    await tap("set:users")
+    check("список пользователей", any(str(UID) in t for t in last_texts()))
+    await tap("set:dicts")
+    check("категории справочников", any("выберите список" in t for t in last_texts()))
+    await tap("dcat:0")
+    check("просмотр отделов", any(dicts.departments[0] in t for t in last_texts())
+          if dicts.departments else False)
+
+    # 19. остальные периоды отчета
+    for kind, label in (("rep:t", "Сегодня"), ("rep:w", "Эта неделя"), ("rep:pm", "Прошлый месяц")):
+        await tap(kind)
+        check(f"отчет {label}", any(label in t for t in last_texts()))
+
+    # 20. события: годовщины, новые, увольнения
+    await tap("evt:anniv")
+    check("годовщины список", any("одовщины" in t for t in last_texts()))
+    await tap("evt:new")
+    check("новые сотрудники", any("овые сотрудники" in t for t in last_texts()))
+    await tap("evt:dis")
+    check("увольнения список", any("вольнения" in t for t in last_texts()))
 
     print()
     print(f"Итог: {len(PASSED)} прошло, {len(FAILED)} упало")
