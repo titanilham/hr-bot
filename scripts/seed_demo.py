@@ -23,7 +23,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from bot.config import load_config  # noqa: E402
 from bot.models import STATUS_FIRED, Employee  # noqa: E402
-from bot.services.sheets import SheetsDB  # noqa: E402
+from bot.services.sheets import SheetsDB, SheetsUnavailable  # noqa: E402
 from bot.utils.dates import add_months, fmt_date  # noqa: E402
 
 TODAY = date.today()
@@ -133,7 +133,13 @@ async def main(force: bool) -> None:
     db = SheetsDB(cfg)
 
     print("Подключаюсь к Google Sheets...")
-    await db.ensure_structure()
+    try:
+        await db.ensure_structure()
+    except SheetsUnavailable as e:
+        print(f"Не удалось подключиться: {e}")
+        print("Проверьте service_account.json и что таблица расшарена на email")
+        print("сервисного аккаунта (Редактор). Инструкция — README.md.")
+        sys.exit(1)
     print("OK: структура листов готова.")
 
     existing = await db.get_employees()
