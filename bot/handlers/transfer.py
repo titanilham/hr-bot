@@ -30,6 +30,9 @@ class Transfer(StatesGroup):
     confirm = State()
 
 
+STEP_STATES = {"pos": Transfer.pos, "dept": Transfer.dept, "sup": Transfer.sup}
+
+
 @router.callback_query(F.data == "xfer")
 async def cb_xfer_menu(cb: CallbackQuery, state: FSMContext, user: User):
     if not user.is_full_access:
@@ -93,7 +96,7 @@ async def _store_and_next(message_or_cb, state, field, value):
 
     if nxt:
         titles = dict(FIELDS)
-        await state.set_state(Transfer[nxt])
+        await state.set_state(STEP_STATES[nxt])
         await send(f"{titles[nxt]}: введите новое значение (или «Пропустить»):",
                    reply_markup=kb.simple_cancel_keyboard(f"xfskip_{nxt}"))
     else:

@@ -73,7 +73,7 @@ async def ask_step(cb_or_msg, state: FSMContext, step: str, db: SheetsDB, edit_m
     """Задает следующий вопрос. cb_or_msg — Message или CallbackQuery."""
     send = (lambda text, kb_=None: cb_or_msg.answer(text, reply_markup=kb_))
     prefix = "✏ Правим: " if edit_mode else f"Шаг {STEP_NUM[step]}/{STEPS_TOTAL} — "
-    await state.set_state(AddEmp[step])
+    await state.set_state(STEP_STATES[step])
 
     if step in DICT_STEPS:
         dicts = await db.dicts()
@@ -109,6 +109,19 @@ async def ask_step(cb_or_msg, state: FSMContext, step: str, db: SheetsDB, edit_m
 STEP_ORDER = ["fio", "phone", "dept", "pos", "branch", "supervisor",
               "birthday", "hire_date", "probation", "gender", "comment"]
 STEP_NUM = {s: i + 1 for i, s in enumerate(STEP_ORDER)}
+STEP_STATES = {
+    "fio": AddEmp.fio,
+    "phone": AddEmp.phone,
+    "dept": AddEmp.dept,
+    "pos": AddEmp.pos,
+    "branch": AddEmp.branch,
+    "supervisor": AddEmp.supervisor,
+    "birthday": AddEmp.birthday,
+    "hire_date": AddEmp.hire_date,
+    "probation": AddEmp.probation,
+    "gender": AddEmp.gender,
+    "comment": AddEmp.comment,
+}
 
 
 async def advance(message: Message, state: FSMContext, db: SheetsDB, done_from: str):

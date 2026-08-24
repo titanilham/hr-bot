@@ -133,7 +133,8 @@ GENDER_OPTIONS = [("M", "Мужской"), ("F", "Женский"), ("-", "Не 
 
 
 def choice_keyboard(prefix: str, options: list[tuple[str, str]],
-                    cancel_cb: str = "addcancel") -> InlineKeyboardMarkup:
+                    cancel_cb: str = "addcancel",
+                    cancel_text: str = "❌ Отменить") -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for val, label in options:
         kb.button(text=label, callback_data=f"{prefix}:{val}")
