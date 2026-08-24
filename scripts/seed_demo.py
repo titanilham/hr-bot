@@ -147,17 +147,18 @@ async def main(force: bool) -> None:
         print(f"-- В таблице уже {len(existing)} сотрудников. "
               "Для перезаписи запустите с флагом --force")
         return
+    if force and existing:
+        print("--force: очищаю листы данных...")
+        for title in ("Сотрудники", "История", "Увольнения"):
+            await db.clear_sheet_data(title)
+        print("OK: данные удалены.")
 
     dicts = await db.dicts()
     if not dicts.departments:
-        for v in DEPARTMENTS:
-            await db.dict_append(0, v)
-        for v in POSITIONS:
-            await db.dict_append(1, v)
-        for v in BRANCHES:
-            await db.dict_append(2, v)
-        for v in SUPERVISORS:
-            await db.dict_append(3, v)
+        await db.dict_append_many(0, DEPARTMENTS)
+        await db.dict_append_many(1, POSITIONS)
+        await db.dict_append_many(2, BRANCHES)
+        await db.dict_append_many(3, SUPERVISORS)
         print("OK: справочники заполнены.")
     else:
         print("-- справочники уже заполнены, пропускаю")
