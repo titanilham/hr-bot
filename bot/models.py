@@ -1,4 +1,4 @@
-"""Доменная модель: сотрудник, пользователь, справочники."""
+"""Domain models: employee, user, dictionaries."""
 
 from dataclasses import dataclass, field
 from datetime import date
@@ -17,8 +17,6 @@ ROLE_TITLES = {
     ROLE_MANAGER: "Руководитель",
 }
 
-# Порядок колонок листа «Сотрудники» (по ТЗ; добавлена колонка «Филиал»,
-# которая нужна для карточки и фильтров по филиалам).
 EMPLOYEE_COLUMNS = [
     "ID", "ФИО", "Телефон", "Пол", "Отдел", "Должность", "Филиал",
     "Руководитель", "Дата рождения", "Дата приема",
@@ -67,7 +65,7 @@ class Employee:
     pos: str = ""
     branch: str = ""
     supervisor: str = ""
-    birthday: str = ""   # ДД.ММ.ГГГГ
+    birthday: str = ""  # DD.MM.YYYY
     hire_date: str = ""
     probation_end: str = ""
     fire_date: str = ""
@@ -75,9 +73,8 @@ class Employee:
     comment: str = ""
     created_at: str = ""
     created_by: str = ""
-    row: int | None = None  # номер строки в таблице
+    row: int | None = None  # sheet row
 
-    # -- Парсинг/сериализация -------------------------------------------------
 
     @classmethod
     def from_row(cls, row: list[str], row_num: int) -> "Employee":
@@ -100,7 +97,6 @@ class Employee:
             self.created_at, self.created_by,
         ]
 
-    # -- Производные значения -------------------------------------------------
 
     @property
     def is_active(self) -> bool:

@@ -1,4 +1,4 @@
-"""Расчет HR-событий. Чистые функции без обращения к сети — легко тестируются."""
+"""HR event calculations; pure functions, no IO."""
 
 import re
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ from bot.utils.dates import (
     years_word,
 )
 
-# Типы событий (попадают в лист «События»)
+# event kinds (logged to Events sheet)
 EV_BIRTHDAY_PRE = "birthday_pre"
 EV_BIRTHDAY = "birthday"
 EV_ANNIV_PRE = "anniversary_pre"
@@ -24,13 +24,13 @@ EV_PROBATION_PRE7 = "probation_pre7"
 EV_PROBATION_PRE3 = "probation_pre3"
 EV_PROBATION = "probation_end"
 
-WINDOW_LIST_DAYS = 30  # окно для раздела «События»
+WINDOW_LIST_DAYS = 30  # events window, days
 
 
 @dataclass(frozen=True)
 class Notification:
-    key: str        # уникальный ключ для защиты от повторной отправки
-    kind: str       # тип события
+    key: str  # dedup key
+    kind: str
     eid: str
     fio: str
     text: str
@@ -45,9 +45,6 @@ def _line(e: Employee) -> str:
     return f"{e.fio}" + (f" ({place})" if place else "")
 
 
-# --------------------------------------------------------------------------
-# Списки для раздела «События»
-# --------------------------------------------------------------------------
 
 def upcoming_birthdays(emps, today, window=WINDOW_LIST_DAYS):
     out = []
@@ -70,7 +67,7 @@ def upcoming_anniversaries(emps, today, window=WINDOW_LIST_DAYS):
             continue
         y, _, _ = diff_ymd(h, today)
         if y < 1:
-            continue  # годовщины раньше года работы не бывают
+            continue
         for years in (y, y + 1):
             occ = add_years(h, years)
             delta = (occ - today).days
@@ -115,9 +112,6 @@ def recent_hires(emps, today, days=WINDOW_LIST_DAYS):
     return sorted(out, key=lambda x: x[1], reverse=True)
 
 
-# --------------------------------------------------------------------------
-# Уведомления на конкретный день (для рассылки и дайджеста)
-# --------------------------------------------------------------------------
 
 def birthday_notifications(emps, today) -> list[Notification]:
     result = []
@@ -188,7 +182,7 @@ def all_due_notifications(emps, today) -> list[Notification]:
 
 
 def digest_counts(emps, today) -> dict[str, int]:
-    """Счетчики категорий для ежедневного HR-дайджеста."""
+    """Category counters for the daily digest."""
     bdays = sum(1 for _, _, d in upcoming_birthdays(emps, today, window=3) if d in (0, 3))
     annivs = sum(1 for *_, d in upcoming_anniversaries(emps, today, window=7) if d in (0, 7))
     proba = sum(1 for *_, d in upcoming_probations(emps, today, window=7) if d in (0, 3, 7))
@@ -198,7 +192,7 @@ def digest_counts(emps, today) -> dict[str, int]:
         "birthdays": bdays,
         "anniversaries": annivs,
         "probation": proba,
-        "vacations": 0,  # модуль отпусков в будущем
+        "vacations": 0,  # vacations: future feature
         "dismissals": fired_today,
         "new_hires": hired_today,
     }

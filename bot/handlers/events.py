@@ -1,4 +1,4 @@
-"""🔔 Раздел «События»: дни рождения, годовщины, испытательные сроки и др."""
+"""Events: birthdays, anniversaries, probation."""
 
 from datetime import date
 

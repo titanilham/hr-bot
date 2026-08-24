@@ -1,9 +1,4 @@
-"""Репозиторий Google Sheets: единственное место, которое ходит в таблицу.
-
-gspread синхронный, поэтому все публичные методы асинхронные и выполняют
-блокирующие вызовы через asyncio.to_thread. Доступ сериализуется локом,
-чтобы не ловить гонки при одновременных нажатиях кнопок.
-"""
+"""Google Sheets repository: the only IO layer."""
 
 import asyncio
 import json
@@ -53,11 +48,11 @@ ALL_SHEETS = {
 
 EMP_ID_RE = re.compile(r"^EMP-(\d+)\b", re.IGNORECASE)
 
-CACHE_TTL = 20.0  # секунд жизни кэша списка сотрудников
+CACHE_TTL = 20.0  # employees cache TTL, seconds
 
 
 class SheetsUnavailable(Exception):
-    """Google Sheets недоступен (сеть, права и т.п.)."""
+    """Google Sheets unavailable (network, permissions, etc.)."""
 
 
 RETRYABLE_CODES = {429, 500, 502, 503}
@@ -79,12 +74,9 @@ class SheetsDB:
         self._ws: dict[str, gspread.Worksheet] = {}
         self._emp_cache: tuple[float, list[Employee]] | None = None
 
-    # ------------------------------------------------------------------
-    # Подключение и инициализация структуры
-    # ------------------------------------------------------------------
 
     def _retry_sync(self, fn, attempts: int = 7):
-        """Повторы при квотах/сбоях Google API (429/5xx) с экспоненциальной паузой."""
+        """Retry Google API quota/5xx errors with exponential backoff."""
         delay = 1.5
         for i in range(attempts):
             try:
@@ -92,7 +84,7 @@ class SheetsDB:
             except APIError as e:
                 code = getattr(e, "code", None)
                 if code in RETRYABLE_CODES and i < attempts - 1:
-                    log.warning("Sheets API %s, повтор #%d через %.1fs", code, i + 1, delay)
+                    log.warning("Sheets API %s, retry #%d in %.1fs", code, i + 1, delay)
                     time.sleep(delay)
                     delay = min(delay * 2, 45)
                 else:
@@ -127,14 +119,12 @@ class SheetsDB:
             self._seed_defaults_sync()
 
     def _seed_defaults_sync(self):
-        # Причины увольнения по умолчанию
         d_ws = self._ws[SH_DICTS]
         col_values = self._retry_sync(d_ws.get_all_values)
         col_values = [r[4].strip() if len(r) > 4 else "" for r in col_values]
         if not any(col_values[1:]):
             rows = [[reason] for reason in DEFAULT_REASONS]
             self._retry_sync(lambda: d_ws.update(values=rows, range_name=f"E2:E{1 + len(rows)}"))
-        # Настройка времени дайджеста по умолчанию
         s_ws = self._ws[SH_SETTINGS]
         values = self._retry_sync(s_ws.get_all_values)
         keys = {r[0].strip() for r in values}
@@ -149,9 +139,6 @@ class SheetsDB:
             raise SheetsUnavailable(f"Лист «{title}» не инициализирован")
         return ws
 
-    # ------------------------------------------------------------------
-    # Сотрудники
-    # ------------------------------------------------------------------
 
     async def get_employees(self, fresh: bool = False) -> list[Employee]:
         if not fresh and self._emp_cache and time.monotonic() - self._emp_cache[0] < CACHE_TTL:
@@ -211,9 +198,6 @@ class SheetsDB:
                 max_num = max(max_num, int(m.group(1)))
         return f"EMP-{max_num + 1:04d}"
 
-    # ------------------------------------------------------------------
-    # История изменений
-    # ------------------------------------------------------------------
 
     async def add_history(self, eid, fio, change_date, change_type, old_val, new_val, comment, who) -> None:
         row = [eid, fio, change_date, change_type, old_val, new_val, comment, who]
@@ -231,9 +215,6 @@ class SheetsDB:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_HISTORY)
         return rows[1:]
 
-    # ------------------------------------------------------------------
-    # Увольнения
-    # ------------------------------------------------------------------
 
     async def add_dismissal(self, row_vals: list[str]) -> None:
         await asyncio.to_thread(self._append_row_sync, SH_DISMISSALS, row_vals)
@@ -242,9 +223,6 @@ class SheetsDB:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_DISMISSALS)
         return rows[1:]
 
-    # ------------------------------------------------------------------
-    # События (журнал отправленных уведомлений = защита от дублей)
-    # ------------------------------------------------------------------
 
     async def log_event(self, key: str, kind: str, eid: str, fio: str, desc: str, recipients: str,
                        sent_day: str, sent_time: str) -> None:
@@ -255,9 +233,6 @@ class SheetsDB:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_EVENTS)
         return {r[2].strip() for r in rows[1:] if len(r) > 2 and r[2].strip()}
 
-    # ------------------------------------------------------------------
-    # Справочники
-    # ------------------------------------------------------------------
 
     async def dicts(self) -> Dicts:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_DICTS)
@@ -277,7 +252,7 @@ class SheetsDB:
         await asyncio.to_thread(self._dict_append_sync, dict_index, value)
 
     async def dict_append_many(self, dict_index: int, values: list[str]) -> None:
-        """Дописывает список значений в колонку справочника одной пачкой."""
+        """Append a batch of values into a dictionary column."""
         if not values:
             return
         await asyncio.to_thread(self._dict_append_many_sync, dict_index, values)
@@ -302,9 +277,6 @@ class SheetsDB:
                     [""] * dict_index + [value], value_input_option="RAW")
         self._retry_sync(_do)
 
-    # ------------------------------------------------------------------
-    # Пользователи (авторизация и роли)
-    # ------------------------------------------------------------------
 
     async def users_all(self) -> list[User]:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_USERS)
@@ -371,9 +343,6 @@ class SheetsDB:
         self._retry_sync(lambda: ws.delete_rows(row_num))
         return True
 
-    # ------------------------------------------------------------------
-    # Настройки (key-value)
-    # ------------------------------------------------------------------
 
     async def setting_get(self, key: str, default: str = "") -> str:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_SETTINGS)
@@ -401,9 +370,6 @@ class SheetsDB:
         else:
             self._retry_sync(lambda: ws.append_row([key, value], value_input_option="RAW"))
 
-    # ------------------------------------------------------------------
-    # Общие низкоуровневые операции
-    # ------------------------------------------------------------------
 
     def _append_row_sync(self, title: str, row: list[str]):
         self._retry_sync(lambda: self._ws_of(title).append_row(row, value_input_option="RAW"))
@@ -416,7 +382,7 @@ class SheetsDB:
         return self._retry_sync(lambda: self._ws_of(title).get_all_values())
 
     async def clear_sheet_data(self, title: str) -> None:
-        """Удаляет все строки кроме заголовка."""
+        """Delete all rows except header."""
         await asyncio.to_thread(self._clear_sheet_data_sync, title)
 
     def _clear_sheet_data_sync(self, title: str):
@@ -428,9 +394,6 @@ class SheetsDB:
         self._retry_sync(_do)
         self._invalidate_cache()
 
-    # ------------------------------------------------------------------
-    # Резервная копия всех листов в JSON
-    # ------------------------------------------------------------------
 
     async def dump_backup(self, path) -> None:
         await asyncio.to_thread(self._dump_backup_sync, path)

@@ -1,4 +1,4 @@
-"""Регистрация всех роутеров. Порядок важен: start первым."""
+"""Router registration; order matters, start first."""
 
 from aiogram import Router
 

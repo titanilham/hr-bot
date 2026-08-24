@@ -1,7 +1,4 @@
-"""Точка входа HR-бота.
-
-Запуск: python main.py
-"""
+"""HR bot entry point."""
 
 import asyncio
 import logging

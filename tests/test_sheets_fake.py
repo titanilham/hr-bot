@@ -1,4 +1,4 @@
-"""Интеграционные тесты SheetsDB на фейковом gspread (без сети)."""
+"""SheetsDB tests on fake gspread, no network."""
 
 import asyncio
 import sys
@@ -36,7 +36,6 @@ def run(coro):
     return asyncio.run(coro)
 
 
-# ---------------------------------------------------------------- структура
 
 def test_structure_created_with_headers():
     db = make_db()
@@ -53,7 +52,6 @@ def test_reasons_seeded_and_digest_default():
     assert run(db.setting_get("digest_time", "")) == "09:00"
 
 
-# ---------------------------------------------------------------- сотрудники
 
 def _emp(**kw) -> Employee:
     base = dict(eid="EMP-0001", fio="Иванова Алина", phone="+77777777777", dept="Розница",
@@ -76,7 +74,7 @@ def test_employee_crud_cycle():
     found = run(db.find_employee_by_id("emp-0001"))
     assert found is not None and found.fio == "Иванова Алина"
 
-    # Обновление статуса (увольнение) сохраняется в таблице
+    # fired status persisted
     found.status = STATUS_FIRED
     found.fire_date = "24.08.2026"
     run(db.update_employee(found))
@@ -109,7 +107,6 @@ def test_dismissals_and_events_log():
     assert run(db.sent_event_keys()) == {"birthday|EMP-0001|2026-08-24"}
 
 
-# ---------------------------------------------------------------- справочники/пользователи/настройки
 
 def test_dicts_append_visible():
     db = make_db()
@@ -124,11 +121,11 @@ def test_users_upsert_update_delete():
     u = run(db.user_find(222))
     assert u is not None and u.role == "manager" and u.notifications is True
 
-    run(db.user_upsert(222, "Боря", "hr"))  # апдейт роли
+    run(db.user_upsert(222, "Боря", "hr"))
     u = run(db.user_find(222))
     assert u.role == "hr"
     users = run(db.users_all())
-    assert len(users) == 1  # не задублился
+    assert len(users) == 1  # no duplicate
 
     assert run(db.user_delete(222)) is True
     assert run(db.user_find(222)) is None
@@ -140,6 +137,6 @@ def test_settings_roundtrip_and_overwrite():
     run(db.setting_set("custom", "v1"))
     assert run(db.setting_get("custom", "")) == "v1"
     run(db.setting_set("custom", "v2"))
-    assert run(db.setting_get("custom", "")) == "v2"  # перезапись, не дубль
+    assert run(db.setting_get("custom", "")) == "v2"  # overwritten, not duplicated
     rows = db._get_rows_sync("Настройки")
     assert sum(1 for r in rows if r and r[0] == "custom") == 1

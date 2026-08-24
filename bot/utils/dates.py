@@ -1,4 +1,4 @@
-"""Работа с датами и русская плюрализация. Чистые функции без побочных эффектов."""
+"""Date helpers and Russian pluralization."""
 
 import calendar
 from datetime import date, timedelta
@@ -10,7 +10,7 @@ MONTHS_GEN = [
 
 
 def parse_date(value: str) -> date | None:
-    """Парсит дату из формата ДД.ММ.ГГГГ (основной) или ГГГГ-ММ-ДД."""
+    """Parse DD.MM.YYYY or YYYY-MM-DD."""
     value = (value or "").strip()
     if not value:
         return None
@@ -40,7 +40,7 @@ def fmt_long_ru(d: date) -> str:
 
 
 def plural(n: int, one: str, few: str, many: str) -> str:
-    """Русская форма числительного: 1 год / 2 года / 5 лет."""
+    """Russian plural form."""
     n = abs(n)
     if n % 10 == 1 and n % 100 != 11:
         return one
@@ -54,10 +54,7 @@ def days_in_month(year: int, month: int) -> int:
 
 
 def diff_ymd(start: date, end: date) -> tuple[int, int, int]:
-    """Разница между датами в годах/месяцах/днях (календарная).
-
-    Пример из ТЗ: 01.08.2023 -> 21.08.2026 = 3 года 20 дней.
-    """
+    """Calendar difference in years/months/days."""
     if end < start:
         return 0, 0, 0
     y = end.year - start.year
@@ -74,7 +71,7 @@ def diff_ymd(start: date, end: date) -> tuple[int, int, int]:
 
 
 def tenure_str(start: date, ref: date) -> str:
-    """Стаж в человекочитаемом виде: '3 года 20 дней'."""
+    """Human-readable tenure."""
     y, m, d = diff_ymd(start, ref)
     parts = []
     if y:
@@ -102,12 +99,12 @@ def add_years(d: date, years: int) -> date:
     year = d.year + years
     try:
         return d.replace(year=year)
-    except ValueError:  # 29 февраля -> 1 марта
+    except ValueError:  # Feb 29 -> Mar 1
         return date(year, 3, 1)
 
 
 def birthday_occurrence(bday: date, today: date) -> date:
-    """Ближайший день рождения: в этом году или в следующем."""
+    """Nearest birthday: this year or next."""
     try:
         occ = bday.replace(year=today.year)
     except ValueError:
@@ -120,9 +117,6 @@ def birthday_occurrence(bday: date, today: date) -> date:
     return occ
 
 
-# --------------------------------------------------------------------------
-# Часовые пояса
-# --------------------------------------------------------------------------
 
 COMMON_TIMEZONES = [
     ("Europe/Moscow", "МСК — Москва (UTC+3)"),
@@ -144,7 +138,7 @@ _TZ_ALIASES = {
 
 
 def normalize_timezone(raw: str) -> str | None:
-    """IANA-имя, псевдоним («МСК») или смещение UTC+N / -N -> каноническое имя."""
+    """Canonical tz name from IANA name, alias or UTC+N offset."""
     import re
     from zoneinfo import ZoneInfo
 
@@ -158,7 +152,7 @@ def normalize_timezone(raw: str) -> str | None:
     if m:
         sign, hours = m.group(1) or "+", int(m.group(2))
         if 0 <= hours <= 14:
-            # В Etc/GMT знак инвертирован: UTC+3 == Etc/GMT-3
+            # Etc/GMT sign inverted: UTC+3 == Etc/GMT-3
             return f"Etc/GMT{'+' if sign == '-' else '-'}{hours}"
     try:
         ZoneInfo(value)

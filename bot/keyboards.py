@@ -1,4 +1,4 @@
-"""Все inline-клавиатуры бота."""
+"""All bot inline keyboards."""
 
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -43,7 +43,7 @@ def employees_filters() -> InlineKeyboardMarkup:
 
 def dict_list_keyboard(prefix: str, values: list[str], back_cb: str,
                        back_text: str = "⬅ Назад") -> InlineKeyboardMarkup:
-    """Список значений справочника как кнопок-фильтров."""
+    """Dictionary values as filter buttons."""
     kb = InlineKeyboardBuilder()
     for i, v in enumerate(values):
         kb.button(text=v[:40], callback_data=f"{prefix}{i}")
@@ -63,11 +63,11 @@ def employees_page(items: list[tuple[int, object]], page: int, total_pages: int,
         return InlineKeyboardButton(text=label, callback_data=f"card:{e.eid}")
 
     kb = InlineKeyboardBuilder()
-    # Сетка 2 в ряд — крупные кнопки вместо полной ширины
+    # 2-column grid
     names = [name_btn(num, e) for num, e in items]
     for i in range(0, len(names), 2):
         kb.row(*names[i:i + 2])
-    # пагинация
+    # pagination
     nav: list[InlineKeyboardButton] = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="◀ Предыдущая",

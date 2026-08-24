@@ -1,4 +1,4 @@
-"""Интеграционный тест ежедневного джоба: уведомления, дайджест, дедуп, бэкап."""
+"""Daily job test: notifications, digest, dedup, backup."""
 
 import asyncio
 import sys
@@ -55,21 +55,21 @@ def test_daily_job_notifications_digest_dedup_backup(tmp_path, monkeypatch):
         await run_daily_job(bot, db, auth, cfg)
 
         texts = [t for _, t in bot.sent]
-        # Персональное ДР-уведомление ушло обоим пользователям
+        # birthday notification went to both users
         assert sum("Сегодня день рождения" in t for t in texts) == 2
-        # Дайджест тоже обоим
+        # digest went to both too
         assert sum("HR-ДАЙДЖЕСТ" in t for t in texts) == 2
-        # Ключ события записан в журнал (защита от дублей)
+        # event key logged (dedup)
         keys = await db.sent_event_keys()
         assert len(keys) == 1 and keys.pop().startswith("birthday|EMP-0001|")
 
-        # Повторный запуск в тот же день: дублей ДР больше нет
+        # rerun same day: no duplicates
         before = len(bot.sent)
         await run_daily_job(bot, db, auth, cfg)
         new_texts = [t for _, t in bot.sent[before:]]
         assert all("Сегодня день рождения" not in t for t in new_texts)
 
-        # Бэкап создан в подмененную папку
+        # backup created in patched dir
         backups = list(backup_mod.BACKUP_DIR.glob("*.json"))
         assert len(backups) == 1
 

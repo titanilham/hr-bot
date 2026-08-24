@@ -1,4 +1,4 @@
-"""Middleware авторизации: пропускает только пользователей из листа «Пользователи»."""
+"""Access middleware: only users from the Users sheet pass."""
 
 import logging
 from typing import Any, Awaitable, Callable
@@ -32,7 +32,7 @@ class AccessMiddleware(BaseMiddleware):
             return
         user = await self.auth.get_user(aiogram_user.id)
         if user is None:
-            # Бутстрап: пустая система -> первый вошедший становится админом
+            # bootstrap: first user becomes admin
             if await self.auth.try_claim_first_admin(aiogram_user.id, aiogram_user.full_name):
                 user = User(uid=aiogram_user.id, name=aiogram_user.full_name,
                             role=ROLE_ADMIN, notifications=True)
@@ -49,6 +49,6 @@ class AccessMiddleware(BaseMiddleware):
                 await event.message.answer(text)
             else:
                 await event.answer(text)
-            return  # не вызываем хендлер
+            return  # deny
         data["user"] = user
         return await handler(event, data)

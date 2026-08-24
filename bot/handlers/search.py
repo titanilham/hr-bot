@@ -1,4 +1,4 @@
-"""🔎 Поиск сотрудников (также используется для выбора при переводе/увольнении)."""
+"""Employee search; also picks employees for transfer/dismissal."""
 
 from aiogram import F, Router
 from aiogram.filters import StateFilter
@@ -91,7 +91,7 @@ async def msg_search(message: Message, state: FSMContext, db):
     await state.clear()
 
 
-# Точки входа из меню переводов/увольнений переопределяются в своих модулях:
+# entry points from transfer/dismissal menus override these
 @router.callback_query(F.data == "xferpick")
 async def cb_xfer_pick(cb: CallbackQuery, state: FSMContext):
     from bot.keyboards import CB_MENU

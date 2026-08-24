@@ -1,4 +1,4 @@
-"""🔄 Кадровые изменения (переводы) с записью в историю."""
+"""Transfers with history logging."""
 
 import logging
 from datetime import date
@@ -41,7 +41,7 @@ async def cb_xfer_menu(cb: CallbackQuery, state: FSMContext, user: User):
         await cb.answer("⛔ Недостаточно прав", show_alert=True)
         return
     await cb.answer()
-    # перенаправляем на выбор сотрудника через поиск
+    # redirect to search picker
     from bot.handlers.search import Search
     await state.set_state(Search.waiting_query)
     await state.update_data(mode="transfer")
@@ -84,7 +84,7 @@ def _next_step(cur: str) -> str | None:
 
 
 def _step_keyboard(field: str):
-    """Клавиатура для шага перевода; у руководителя есть вариант «Нет»."""
+    """Keyboard for a transfer step; supervisor step has a none option."""
     if field == "supervisor":
         b = InlineKeyboardBuilder()
         b.button(text="⏭ Пропустить", callback_data="xfskip_sup")
@@ -136,7 +136,7 @@ async def cb_xfer_skip(cb: CallbackQuery, state: FSMContext):
 
 @router.callback_query(StateFilter(Transfer.sup), F.data == "xfnone_sup")
 async def cb_xfer_none_sup(cb: CallbackQuery, state: FSMContext):
-    """Явно обнулить руководителя при переводе."""
+    """Explicitly clear supervisor on transfer."""
     data = await state.get_data()
     changes = data.setdefault("changes", {})
     changes["supervisor"] = ""

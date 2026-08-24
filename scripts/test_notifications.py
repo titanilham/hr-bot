@@ -1,11 +1,4 @@
-"""Одноразовый живой прогон уведомлений: дайджест через ~2 минуты.
-
-Сдвигает время дайджеста в «Настройках» на пару минут вперед, ждет срабатывания
-планировщика, показывает что ушло в Telegram и что записалось в лист «События»,
-затем возвращает исходное время и сбрасывает суточную отметку.
-
-Запуск при работающем боте: python scripts/test_notifications.py
-"""
+"""Live one-shot notification run: digest fires in ~2 minutes."""
 
 import asyncio
 import sys
@@ -50,7 +43,7 @@ async def main() -> None:
     else:
         print("OK: планировщик сработал, сообщения отправлены.")
 
-    # Что записалось в журнал событий
+    # what got logged to the events journal
     rows = await asyncio.to_thread(db._get_rows_sync, "События")
     kinds: dict[str, int] = {}
     for r in rows[1:]:
@@ -66,8 +59,7 @@ async def main() -> None:
     backups = sorted(p.name for p in backup.glob("*.json")) if backup.exists() else []
     print(f"Бэкапы: {backups[-1] if backups else 'нет'}")
 
-    # Возврат настроек: исходное время + сброс отметки, чтобы демо-уведомления
-    # пришли еще раз в штатное время
+    # restore settings: original digest time + reset mark
     await db.setting_set("digest_time", old_time)
     await db.setting_set("last_digest_date", "")
     print(f"Настройки возвращены: digest_time={old_time}, отметка дня сброшена.")

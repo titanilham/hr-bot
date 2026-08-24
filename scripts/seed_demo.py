@@ -1,17 +1,4 @@
-"""Заливка тестовых данных в Google Sheets для проверки HR-бота.
-
-Запускать ПОСЛЕ настройки сервисного аккаунта (см. README):
-    python scripts/seed_demo.py
-
-Даты подобраны относительно сегодняшнего дня, чтобы сразу сработали:
-  - уведомление о ДР за 3 дня и в день ДР;
-  - годовщина за 7 дней;
-  - испытательный срок за 7 дней, за 3 дня и в день окончания;
-  - «новый сотрудник» (принят сегодня);
-  - HR-отчет за текущий месяц (принятые/уволенные/переводы).
-
-Опция --force перезаписывает данные даже если сотрудники уже есть.
-"""
+"""Seed demo data into Google Sheets."""
 
 import asyncio
 import sys
@@ -30,7 +17,7 @@ TODAY = date.today()
 
 
 def d(days: int) -> str:
-    """Дата относительно сегодня."""
+    """Date relative to today."""
     return fmt_date(TODAY + timedelta(days=days))
 
 
@@ -44,10 +31,10 @@ POSITIONS = ["Бариста", "Старший бариста", "Кассир", 
 BRANCHES = ["Магазин №7", "Магазин №3", "Центральный офис", "Склад №1"]
 SUPERVISORS = ["Петрова Анна", "Смирнов Игорь", "Ким Ольга"]
 
-# фио, пол, отдел, должность, филиал, руководитель,
-# ДР, дата приема, конец ИС, [дата увольнения, причина], комментарий
+# row: fio, gender, dept, pos, branch, supervisor,
+# bday, hire, probation end, [fired date, reason], comment
 PEOPLE = [
-    # --- спец-кейсы под уведомления ---
+    # --- special cases for notifications ---
     dict(fio="Иванова Алина", gender="Ж", dept="Розница", pos="Бариста",
          branch="Магазин №7", sup="Петрова Анна",
          bday=d(3), hire=months_ago(14), proba="",
@@ -79,7 +66,7 @@ PEOPLE = [
          hire=fmt_date((TODAY + timedelta(days=7)).replace(year=TODAY.year - 3)),
          proba="",
          comment="Демо: годовщина 3 года через 7 дней"),
-    # --- обычные сотрудники ---
+    # --- regular employees ---
     dict(fio="Волкова Ольга", gender="Ж", dept="Розница", pos="Бариста",
          branch="Магазин №3", sup="Петрова Анна",
          bday="12.03.1999", hire=months_ago(20), proba="", comment=""),
@@ -114,7 +101,7 @@ PEOPLE = [
     dict(fio="Титова Вера", gender="Ж", dept="Офис", pos="HR-менеджер",
          branch="Центральный офис", sup="Ким Ольга",
          bday="14.12.1992", hire=months_ago(50), proba="", comment=""),
-    # --- уволенные (остаются в базе) ---
+    # --- fired (kept in db) ---
     dict(fio="Ушкин Тест", gender="М", dept="Розница", pos="Бариста",
          branch="Магазин №7", sup="Петрова Анна",
          bday="01.01.1995", hire=months_ago(13), proba="",

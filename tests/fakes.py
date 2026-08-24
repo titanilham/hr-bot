@@ -1,4 +1,4 @@
-"""Фейковые gspread/aiogram объекты для интеграционных тестов без сети."""
+"""Fake gspread/aiogram objects for network-free tests."""
 
 import re
 

@@ -1,10 +1,4 @@
-"""Сквозная проверка хендлеров через реальный диспетчер aiogram.
-
-Telegram-сеть не используется: исходящие сообщения перехватываются,
-а данные читаются/пишутся в настоящую Google-таблицу.
-
-Запуск: python scripts/e2e_check.py
-"""
+"""End-to-end handler checks through a real aiogram dispatcher."""
 
 import asyncio
 import sys
@@ -31,12 +25,12 @@ FAILED = []
 
 
 class RecordingBot(Bot):
-    """Перехватывает все исходящие вызовы к Telegram API."""
+    """Intercepts all outgoing Telegram API calls."""
 
     def __init__(self, token: str):
         super().__init__(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         self.sent: list[tuple[str, str]] = []
-        self.markups: list[list[list[str]]] = []  # тексты кнопок по строкам
+        self.markups: list[list[list[str]]] = []  # button texts per row
 
     async def __call__(self, method, request_timeout: int | None = None):
         name = type(method).__name__
@@ -103,7 +97,7 @@ async def main() -> int:
     dp.message.middleware(AccessMiddleware(auth))
     dp.callback_query.middleware(AccessMiddleware(auth))
 
-    UID = 1456945518  # админ из .env
+    UID = 1456945518  # admin uid from .env
     CID = UID
     seq = {"n": 100}
 
@@ -132,15 +126,15 @@ async def main() -> int:
     def has_in_last_markup(substr: str) -> bool:
         return any(substr in btn for row in last_markup() for btn in row)
 
-    # 1. /start -> меню
+    # 1. /start -> menu
     await send("/start")
     check("меню открывается", any("HR" in t for t in last_texts()))
 
-    # 2. фильтры сотрудников
+    # 2. employee filters
     await tap("emp")
     check("подменю фильтров", any("фильтр" in t.lower() for t in last_texts()))
 
-    # 3. список всех (пагинация)
+    # 3. all employees (pagination)
     await tap("empl:all:0")
     check("список всех сотрудников", any("Всего:" in t for t in last_texts()),
           str(last_texts(1)))
@@ -149,13 +143,12 @@ async def main() -> int:
           bool(grid) and len(grid[0]) == 2,
           str(grid[:2]))
 
-    # 3a. Фильтры по отделам/филиалам: тапаем РЕАЛЬНЫЕ кнопки из рендера
     dicts = await db.dicts()
     await tap("fdep")
     check("выбор отдела", any("отдел" in t.lower() for t in last_texts()))
     dep_cb = cb_from_last_markup("empl:dep-")
     if dicts.departments and dep_cb:
-        await tap(dep_cb)  # честный формат кнопки, каким его видит Telegram
+        await tap(dep_cb)  # exact callback Telegram sends
         check("фильтр по отделу (реальная кнопка)",
               any("Отдел:" in t for t in last_texts()), str(last_texts(1)))
     await tap("emp")
@@ -166,15 +159,15 @@ async def main() -> int:
         check("фильтр по филиалу (реальная кнопка)",
               any("Филиал:" in t for t in last_texts()), str(last_texts(1)))
 
-    # 4. работающие
+    # 4. active
     await tap("empl:act:0")
     check("фильтр работающих", any("Работающие" in t for t in last_texts()))
 
-    # 5. испытательный срок
+    # 5. probation filter
     await tap("empl:proba:0")
     check("фильтр ИС", any("испытательном" in t for t in last_texts()))
 
-    # 6. по отделам
+    # 6. by department
     await tap("fdep")
     check("выбор отдела", any("отдел" in t.lower() for t in last_texts()))
     dicts = await db.dicts()
@@ -183,36 +176,36 @@ async def main() -> int:
         check("фильтр по отделу", any(dicts.departments[0] in t or "Сотрудники" in t
                                       for t in last_texts()))
 
-    # 7. карточка
+    # 7. card
     emps = await db.get_employees()
     target = next((e for e in emps if e.eid == "EMP-0001"), emps[0])
     await tap(f"card:{target.eid}")
     check("карточка со стажем", any("Стаж" in t for t in last_texts()),
           str(last_texts(1)))
 
-    # 8. история
+    # 8. history
     await tap(f"hist:{target.eid}")
     check("история карточки", any("История" in t for t in last_texts()))
 
-    # 9. события: ДР
+    # 9. events: birthdays
     await tap("evt:bdy")
     check("список ДР", any("Дни рождения" in t for t in last_texts()))
 
-    # 10. события: испытательные сроки
+    # 10. events: probation
     await tap("evt:proba")
     check("список ИС", any("Испытательные сроки" in t for t in last_texts()))
 
-    # 11. отчет за месяц
+    # 11. monthly report
     await tap("rep:m")
     check("HR-отчет", any("HR-ОТЧЕТ" in t for t in last_texts()), str(last_texts(1)))
 
-    # 12. поиск
+    # 12. search
     await tap("srch")
     check("промпт поиска", any("Введите ФИО" in t for t in last_texts()))
     await send("Кассир")
     check("результаты поиска", any("Найдено" in t for t in last_texts()))
 
-    # 13. мастер добавления (до предпросмотра, без сохранения)
+    # 13. add wizard (up to preview, no save)
     import time as _time
     uniq_phone = "+7 70" + str(int(_time.time()) % 100000000)
     await tap("add")
@@ -279,7 +272,7 @@ async def main() -> int:
             await asyncio.sleep(0.5)
     check("новый сотрудник в таблице", new_emp is not None)
 
-    # 14. полный цикл перевода со пропусками (без записи в таблицу)
+    # 14. transfer with skips (no writes)
     other = new_emp or next((e for e in emps if e.is_active and e.eid != target.eid), target)
     await tap(f"xfer:{other.eid}")
     check("перевод: запрос должности", any("олжность" in t for t in last_texts()))
@@ -293,7 +286,7 @@ async def main() -> int:
     check("перевод: ничего не менялось", any("Ничего не изменено" in t
                                              for t in last_texts()), str(last_texts(1)))
 
-    # 15. перевод с реальным изменением должности (запись в историю)
+    # 15. transfer with real change (history written)
     await tap(f"xfer:{other.eid}")
     await send("Старший тест-инженер")
     await tap("xfskip_dept")
@@ -306,7 +299,7 @@ async def main() -> int:
     check("история перевода записана",
           any(r[3] == "перевод" and r[5] == "Старший тест-инженер" for r in hist_after))
 
-    # 16. увольнение с подтверждением (полный путь записи)
+    # 16. dismissal with confirmation
     await tap(f"fire:{other.eid}")
     check("увольнение: выбор причины", any("ыберите причину" in t for t in last_texts()),
           str(last_texts(2)))
@@ -325,13 +318,13 @@ async def main() -> int:
     check("запись в листе Увольнения",
           any(r and r[0].strip() == other.eid for r in dis))
 
-    # 17. редактирование карточки: открыть список полей и вернуться
+    # 17. edit fields open/back
     await tap(f"edit:{target.eid}")
     check("редактирование: список полей", any("Что изменить" in t for t in last_texts()))
     await tap(f"card:{target.eid}")
     check("возврат к карточке", any("Стаж" in t for t in last_texts()))
 
-    # 18. настройки (панель, пользователи, справочники)
+    # 18. settings (panel, users, dicts)
     await tap("set")
     check("панель настроек", any("астройки" in t for t in last_texts()))
     await tap("set:users")
@@ -342,7 +335,7 @@ async def main() -> int:
     check("просмотр отделов", any(dicts.departments[0] in t for t in last_texts())
           if dicts.departments else False)
 
-    # 18a. Смена роли: безопасная механика вместо слепого цикла
+    # 18a. role change safety checks
     def last_answer() -> str:
         ans = [t for name, t in bot.sent if name == "AnswerCallbackQuery"]
         return ans[-1] if ans else ""
@@ -374,7 +367,7 @@ async def main() -> int:
     check("понижение второго админа работает при двух админах",
           other_demoted is not None and other_demoted.role == ROLE_MANAGER)
 
-    # последний админ: временно понижаем себя до HR, в системе остается один админ
+    # demote self to HR leaving OTHER as last admin
     me_before = await db.user_find(UID)
     await db.user_upsert(UID, me_before.name, ROLE_HR,
                          notifications=me_before.notifications)
@@ -393,7 +386,7 @@ async def main() -> int:
     check("нельзя удалить последнего админа",
           "последнего администратора" in last_answer(), last_answer())
 
-    # восстановление: снова админ, второй возвращаем в manager
+    # restore self to admin, other back to manager
     await db.user_upsert(UID, me_before.name, ROLE_ADMIN,
                          notifications=me_before.notifications)
     auth.invalidate(UID)
@@ -403,7 +396,7 @@ async def main() -> int:
           restored_other is not None and restored_other.role == ROLE_MANAGER)
     await db.user_delete(OTHER_UID)
 
-    # 18b. Мастер добавления: кнопка «Нет руководителя» (до предпросмотра, без записи)
+    # 18b. add wizard: no-supervisor button (no save)
     await tap("add")
     await send("Е2е Без Руководителя")
     await send("+7 7011122233")
@@ -436,7 +429,7 @@ async def main() -> int:
           preview_tail)
     await tap("addcancel")
 
-    # 18c. Часовой пояс в настройках
+    # 18c. timezone setting
     from bot.utils.dates import normalize_timezone as _ntz
     check("нормализация пояса: МСК",
           _ntz("мск") == "Europe/Moscow" and _ntz("+3") == "Etc/GMT-3")
@@ -452,12 +445,12 @@ async def main() -> int:
     check("пояс сохранен в настройках",
           saved_tz == "Europe/Moscow", f"saved={saved_tz}")
 
-    # 19. остальные периоды отчета
+    # 19. other report periods
     for kind, label in (("rep:t", "Сегодня"), ("rep:w", "Эта неделя"), ("rep:pm", "Прошлый месяц")):
         await tap(kind)
         check(f"отчет {label}", any(label in t for t in last_texts()))
 
-    # 20. события: годовщины, новые, увольнения
+    # 20. events: anniversaries/new/fired
     await tap("evt:anniv")
     check("годовщины список", any("одовщины" in t for t in last_texts()))
     await tap("evt:new")

@@ -1,9 +1,4 @@
-"""Конфигурация приложения.
-
-Все секреты и ссылки хранятся в файле .env (не попадает в git).
-config.py только читает переменные окружения — это безопаснее,
-чем хранить токены прямо в коде.
-"""
+"""App config; secrets come from .env only."""
 
 import os
 from dataclasses import dataclass

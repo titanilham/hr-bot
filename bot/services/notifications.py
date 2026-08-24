@@ -1,9 +1,4 @@
-"""Ежедневные уведомления и HR-дайджест.
-
-Один фоновый цикл: раз в минуту сверяет локальное время со временем
-дайджеста из листа «Настройки». Отправляет персональные уведомления
-(с защитой от повторов через лист «События») и общий дайджест.
-"""
+"""Daily notifications and digest scheduler."""
 
 import asyncio
 import logging
@@ -21,7 +16,7 @@ from bot.services.sheets import SheetsDB
 
 log = logging.getLogger(__name__)
 
-CHECK_INTERVAL = 20  # секунд между проверками времени
+CHECK_INTERVAL = 20  # seconds between time checks
 
 
 def now_local(cfg: Config) -> datetime:
@@ -77,7 +72,7 @@ def _month_gen(m: int) -> str:
 
 async def run_daily_job(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
                         events_kb=None, today=None, now_dt=None) -> None:
-    """Персональные уведомления за день + дайджест + бэкап."""
+    """Personal notifications + digest + backup."""
     if today is None or now_dt is None:
         local_now = now_local(cfg)
         today = today or local_now.date()
@@ -123,7 +118,7 @@ async def scheduler_loop(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
             today_iso = now.date().isoformat()
             already_sent = await db.setting_get("last_digest_date", "") == today_iso
             if enabled and hhmm == target and not already_sent:
-                # Отмечаем дату ДО отправки, чтобы рестарт бота не вызвал повтор
+                # mark date BEFORE sending so restart won't resend
                 await db.setting_set("last_digest_date", today_iso)
                 await run_daily_job(bot, db, auth, cfg, events_kb,
                                     today=now.date(), now_dt=now)

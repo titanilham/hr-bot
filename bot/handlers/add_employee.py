@@ -1,4 +1,4 @@
-"""➕ Добавление сотрудника: пошаговый мастер с предпросмотром."""
+"""Add-employee wizard with preview."""
 
 import logging
 from datetime import date
@@ -70,7 +70,7 @@ def preview_text(d: dict) -> str:
 
 
 async def ask_step(cb_or_msg, state: FSMContext, step: str, db: SheetsDB, edit_mode=False):
-    """Задает следующий вопрос. cb_or_msg — Message или CallbackQuery."""
+    """Ask the next wizard question."""
     send = (lambda text, kb_=None: cb_or_msg.answer(text, reply_markup=kb_))
     prefix = "✏ Правим: " if edit_mode else f"Шаг {STEP_NUM[step]}/{STEPS_TOTAL} — "
     await state.set_state(STEP_STATES[step])
@@ -134,9 +134,6 @@ async def advance(message: Message, state: FSMContext, db: SheetsDB, done_from: 
     await ask_step(message, state, nxt, db)
 
 
-# --------------------------------------------------------------------------
-# Вход в мастер
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data == "add")
 async def cb_add(cb: CallbackQuery, state: FSMContext, db: SheetsDB, user: User):
@@ -156,12 +153,8 @@ async def cb_add_cancel(cb: CallbackQuery, state: FSMContext):
     await cb.message.answer("❌ Добавление отменено.")
 
 
-# --------------------------------------------------------------------------
-# Выбор из справочников / опций
-# --------------------------------------------------------------------------
 
 def _save_and_next(cb: CallbackQuery, state: FSMContext, db, key: str, value: str):
-    # сохраняем и переходим к следующему шагу
     async def run():
         data = await state.get_data()
         draft = data.get("draft", {})
@@ -225,9 +218,6 @@ async def cb_add_skip_comment(cb: CallbackQuery, state: FSMContext):
     await goto_preview(cb.message, state)
 
 
-# --------------------------------------------------------------------------
-# Текстовый ввод обязательных полей
-# --------------------------------------------------------------------------
 
 @router.message(StateFilter(AddEmp.fio), F.text)
 async def msg_fio(message: Message, state: FSMContext, db: SheetsDB):
@@ -299,7 +289,7 @@ async def msg_comment(message: Message, state: FSMContext):
     await goto_preview(message, state)
 
 
-# Общий обработчик текста для шагов-справочников (ручной ввод)
+# manual input fallback for dict steps
 @router.message(StateFilter(AddEmp.dept), F.text)
 async def msg_dept(message: Message, state: FSMContext, db: SheetsDB):
     data = await state.get_data(); draft = data.setdefault("draft", {})
@@ -332,9 +322,6 @@ async def msg_sup(message: Message, state: FSMContext, db: SheetsDB):
     await advance(message, state, db, "supervisor")
 
 
-# --------------------------------------------------------------------------
-# Предпросмотр: сохранить / изменить / отменить
-# --------------------------------------------------------------------------
 
 async def goto_preview(message: Message, state: FSMContext):
     data = await state.get_data()

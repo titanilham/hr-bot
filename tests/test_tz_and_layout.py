@@ -1,4 +1,4 @@
-"""Юнит-тесты часовых поясов и раскладок клавиатур."""
+"""Timezone and keyboard layout unit tests."""
 
 import sys
 from pathlib import Path
@@ -29,7 +29,7 @@ def test_employees_page_grid_two_per_row():
 
     markup = employees_page([(1, _E()), (2, _E()), (3, _E())], 0, 1, "all")
     rows = markup.inline_keyboard
-    # первая строка: две крупные кнопки с именами, третья переносится
+    # row0 holds two name buttons
     assert len(rows[0]) == 2
     assert len(rows[1]) == 1
     assert "card:EMP-0001" in rows[0][0].callback_data
@@ -52,7 +52,7 @@ def test_settings_keyboard_has_tz():
     markup = settings_keyboard("09:00", True, "Europe/Moscow")
     texts = [b.text for row in markup.inline_keyboard for b in row]
     assert any("Часовой пояс" in t for t in texts)
-    # без пояса кнопка не добавляется (обратная совместимость)
+    # no tz button without arg (back-compat)
     markup2 = settings_keyboard("09:00", True)
     texts2 = [b.text for row in markup2.inline_keyboard for b in row]
     assert not any("Часовой пояс" in t for t in texts2)

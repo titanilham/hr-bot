@@ -1,13 +1,4 @@
-"""Диагностика окружения HR-бота (без запуска самого бота).
-
-Проверяет по шагам:
- 1. наличие .env и корректность значений
- 2. валидность токена Telegram (getMe)
- 3. файл сервисного аккаунта Google
- 4. доступ к таблице Google Sheets (чтение + создание листов при необходимости)
-
-Запуск: python scripts/check_setup.py
-"""
+"""Environment diagnostics without starting the bot."""
 
 import json
 import sys
@@ -54,7 +45,7 @@ def main() -> int:
         print(FAIL + str(e))
         return 1
 
-    # 2. Токен Telegram
+    # 2. Telegram token
     try:
         url = f"https://api.telegram.org/bot{cfg.bot_token}/getMe"
         with urllib.request.urlopen(url, timeout=10) as resp:
@@ -67,7 +58,7 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         step(False, "", f"Токен Telegram не работает: {e}")
 
-    # 3. Сервисный аккаунт
+    # 3. service account
     creds = Path(cfg.credentials_file)
     email_hint = ""
     if creds.exists():
@@ -83,7 +74,7 @@ def main() -> int:
              f"Файл сервисного аккаунта не найден: {creds}\n"
              "       Получите его за 5 минут — инструкция в README.md, раздел «Подключение Google Sheets».")
 
-    # 4. Доступ к таблице
+    # 4. spreadsheet access
     if creds.exists():
         try:
             import gspread
@@ -113,7 +104,7 @@ def main() -> int:
                 hint = "\n       Проверьте SPREADSHEET_ID в .env."
             step(False, "", f"Нет доступа к таблице: {msg}{hint}")
 
-    # 5. Админы
+    # 5. admins
     if not cfg.admin_ids:
         print(WARN + "ADMIN_IDS пуст. Первый запуск: напишите боту /start — "
                      "он покажет ваш Telegram ID, внесите его в ADMIN_IDS.")

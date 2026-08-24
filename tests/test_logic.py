@@ -1,4 +1,4 @@
-"""Юнит-тесты чистой логики (без сети и Google Sheets). Запуск: pytest tests/"""
+"""Pure logic unit tests. Run: pytest tests/"""
 
 import sys
 from datetime import date
@@ -38,10 +38,9 @@ def test_fmt_date():
     assert fmt_date(date(2026, 8, 21)) == "21.08.2026"
 
 
-# ---------------------------------------------------------------- стаж
 
 def test_diff_ymd_tz_example():
-    # Пример из ТЗ: 01.08.2023 -> 21.08.2026 = 3 года 20 дней
+    # example: 01.08.2023 -> 21.08.2026 = 3 years 20 days
     y, m, d = diff_ymd(date(2023, 8, 1), date(2026, 8, 21))
     assert (y, m, d) == (3, 0, 20)
 
@@ -84,7 +83,6 @@ def test_birthday_occurrence():
     assert birthday_occurrence(leap, date(2026, 2, 20)) == date(2026, 3, 1)
 
 
-# ---------------------------------------------------------------- события
 
 def _emp(**kw):
     base = dict(eid="EMP-0001", fio="Иванова Алина", dept="Розница", branch="Магазин №7",
@@ -97,7 +95,7 @@ def test_birthday_notifications_offsets():
     today = date(2026, 8, 24)
     e = _emp(birthday="27.08.1995")
     notifs = {n.kind for n in ev.birthday_notifications([e], today)}
-    assert notifs == {"birthday_pre"}  # за 3 дня
+    assert notifs == {"birthday_pre"}  # 3 days ahead
 
     today2 = date(2026, 8, 27)
     notifs2 = {n.kind for n in ev.birthday_notifications([e], today2)}
@@ -114,7 +112,7 @@ def test_fired_employee_no_notifications():
 
 
 def test_anniversary_notifications():
-    # Принята 28.08.2024 -> годовщина 28.08.2026 (2 года): pre за 7 дней = 21.08.2026
+    # hired 28.08.2024 -> 2y anniversary, 7d notice on 21.08.2026
     e = _emp(hire_date="28.08.2024")
     today = date(2026, 8, 21)
     kinds = {n.kind for n in ev.anniversary_notifications([e], today)}
@@ -122,17 +120,16 @@ def test_anniversary_notifications():
     day = date(2026, 8, 28)
     kinds_day = {n.kind for n in ev.anniversary_notifications([e], day)}
     assert kinds_day == {"anniversary"}
-    # Первая годовщина (1 год) тоже приходит
+    # first anniversary arrives
     first_year = date(2025, 8, 28)
     kinds_first = {n.kind for n in ev.anniversary_notifications([e], first_year)}
     assert kinds_first == {"anniversary"}
-    # А до первой годовщины их нет
     before = date(2025, 8, 20)
     assert ev.anniversary_notifications([e], before) == []
 
 
 def test_probation_notifications():
-    # Испытательный срок до 01.09.2026
+    # probation until 01.09.2026
     e = _emp(hire_date="01.08.2026", probation_end="01.09.2026")
     kinds = {}
     for offset, expected in ((7, "probation_pre7"), (3, "probation_pre3"), (0, "probation_end")):
@@ -141,7 +138,7 @@ def test_probation_notifications():
         target = d - timedelta(days=offset)
         got = {n.kind for n in ev.probation_notifications([e], target)}
         assert got == {expected}, f"offset={offset}"
-    # После окончания ИС уведомлений нет
+    # no notices after probation ends
     from datetime import timedelta
     late = date(2026, 9, 1) + timedelta(days=1)
     assert ev.probation_notifications([e], late) == []

@@ -1,4 +1,4 @@
-"""Команды /start, /help, /id и возврат в главное меню."""
+"""/start, /help, /id commands and back-to-menu."""
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart

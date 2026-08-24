@@ -1,4 +1,4 @@
-"""Сервис авторизации: роли, сидирование админов из .env."""
+"""Auth service: roles, admin seeding from .env."""
 
 import logging
 
@@ -16,7 +16,7 @@ class AuthService:
         self._cache: dict[int, User] = {}
 
     async def bootstrap(self) -> None:
-        """Добавляет админов из ADMIN_IDS (идемпотентно)."""
+        """Seed admins from ADMIN_IDS (idempotent)."""
         for uid in self.cfg.admin_ids:
             existing = await self.db.user_find(uid)
             if existing is None:
@@ -24,8 +24,7 @@ class AuthService:
                 log.info("Администратор %s добавлен из ADMIN_IDS", uid)
 
     async def try_claim_first_admin(self, uid: int, name: str) -> bool:
-        """Если система совсем пустая (нет пользователей и админов в .env),
-        первый вошедший становится администратором."""
+        """First ever user becomes admin if system is empty."""
         if self.cfg.admin_ids:
             return False
         if await self.db.users_all():
@@ -39,7 +38,7 @@ class AuthService:
         if not refresh and uid in self._cache:
             return self._cache[uid]
         user = await self.db.user_find(uid)
-        self._cache[uid] = user  # кэшируем и None — чтобы не дергать таблицу каждый раз
+        self._cache[uid] = user  # cache None too
         return user
 
     def invalidate(self, uid: int | None = None) -> None:
@@ -49,6 +48,6 @@ class AuthService:
             self._cache.pop(uid, None)
 
     async def recipients(self) -> list[User]:
-        """Все пользователи с включенными уведомлениями."""
+        """All users with notifications enabled."""
         users = await self.db.users_all()
         return [u for u in users if u.notifications]

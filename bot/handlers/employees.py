@@ -1,4 +1,4 @@
-"""Раздел 👥 Сотрудники: фильтры, пагинация, карточка, история, редактирование."""
+"""Employees: filters, pagination, card, history, editing."""
 
 import logging
 from datetime import date
@@ -32,7 +32,7 @@ FILTER_TITLES = {
 
 
 def resolve_filter(dicts: Dicts, key: str, today: date):
-    """Возвращает (заголовок, предикат)."""
+    """Return (title, predicate)."""
     if key == "all":
         return FILTER_TITLES["all"], lambda e: True
     if key == "act":
@@ -84,9 +84,6 @@ async def find_emp(db: SheetsDB, eid: str) -> Employee | None:
     return None
 
 
-# --------------------------------------------------------------------------
-# Меню фильтров
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data == "emp")
 async def cb_emp(cb: CallbackQuery, state: FSMContext):
@@ -112,15 +109,12 @@ async def cb_filter_dicts(cb: CallbackQuery, db: SheetsDB):
     await cb.message.answer(title, reply_markup=kb.dict_list_keyboard(prefix, values, "emp"))
 
 
-# --------------------------------------------------------------------------
-# Постраничный список
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data.startswith("empl:"))
 async def cb_list(cb: CallbackQuery, db: SheetsDB):
     parts = cb.data.split(":")
     key = parts[1] if len(parts) > 1 else "all"
-    # Кнопки из справочника могут прийти без страницы (empl:dep-0) — считаем её первой
+    # dict buttons may omit page part
     page = max(0, int(parts[2])) if len(parts) > 2 and parts[2].lstrip("-").isdigit() else 0
     today = date.today()
     dicts = await db.dicts()
@@ -152,9 +146,6 @@ async def cb_list(cb: CallbackQuery, db: SheetsDB):
     await cb.message.answer(text, reply_markup=kb.employees_page(items, page, total_pages, key))
 
 
-# --------------------------------------------------------------------------
-# Карточка и история
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data.startswith("card:"))
 async def cb_card(cb: CallbackQuery, state: FSMContext, db: SheetsDB, user: User):
@@ -184,7 +175,7 @@ async def cb_history(cb: CallbackQuery, state: FSMContext, db: SheetsDB):
         return
     lines = [f"📜 История: {e.fio} (<code>{eid}</code>)\n"]
     for r in rows:
-        # ID | ФИО | Дата | Тип | Старое | Новое | Комментарий | Кто
+        # id | fio | date | type | old | new | comment | by
         d, typ, old, new = r[2], r[3], r[4], r[5]
         line = f"• {d} — {typ}"
         if old or new:
@@ -196,9 +187,6 @@ async def cb_history(cb: CallbackQuery, state: FSMContext, db: SheetsDB):
         await cb.message.answer("\n\n".join(lines[i:i + 40]))
 
 
-# --------------------------------------------------------------------------
-# Редактирование полей карточки
-# --------------------------------------------------------------------------
 
 DATE_FIELDS = {"birthday": "Дата рождения", "hire_date": "Дата приема",
                "probation_end": "Испытательный срок"}

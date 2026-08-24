@@ -1,4 +1,4 @@
-"""⚙ Настройки: пользователи/роли, время дайджеста, уведомления, справочники."""
+"""Settings: users/roles, digest time, notifications, timezone, dicts."""
 
 import logging
 import re
@@ -37,9 +37,6 @@ async def _guard(cb: CallbackQuery, user: User) -> bool:
     return True
 
 
-# --------------------------------------------------------------------------
-# Панель настроек
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data == "set")
 async def cb_settings(cb: CallbackQuery, state: FSMContext, db: SheetsDB, cfg, user: User):
@@ -105,9 +102,6 @@ async def msg_set_time(message: Message, state: FSMContext, db: SheetsDB):
     await message.answer(f"✅ Время дайджеста: {hhmm}")
 
 
-# --------------------------------------------------------------------------
-# Часовой пояс
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data == "set:tz")
 async def cb_set_tz(cb: CallbackQuery, db: SheetsDB, cfg, user: User):
@@ -147,9 +141,6 @@ async def msg_tz_custom(message: Message, state: FSMContext, db: SheetsDB):
     await message.answer(f"✅ Часовой пояс: {name}")
 
 
-# --------------------------------------------------------------------------
-# Пользователи и доступы
-# --------------------------------------------------------------------------
 
 def _users_keyboard(users: list[User], me_uid: int):
     b = InlineKeyboardBuilder()
@@ -188,12 +179,12 @@ async def cb_users(cb: CallbackQuery, db: SheetsDB, auth: AuthService, user: Use
 
 @router.callback_query(F.data.startswith("urole:"))
 async def cb_role_menu(cb: CallbackQuery, db: SheetsDB, user: User):
-    """Открывает выбор роли явно. Ничего не меняет без подтверждения."""
+    """Open the role picker; nothing changes without confirmation."""
     if not await _guard(cb, user):
         return
     uid = int(cb.data.split(":")[1])
     if uid == user.uid:
-        # Защита от само-понижения: последний админ может заблокировать панель.
+        # prevent self-lockout
         await cb.answer("Нельзя изменить собственную роль", show_alert=True)
         return
     target = await db.user_find(uid)
@@ -313,9 +304,6 @@ async def cb_pick_role(cb: CallbackQuery, state: FSMContext, db: SheetsDB,
     await _render_users(cb, db, auth, user)
 
 
-# --------------------------------------------------------------------------
-# Справочники
-# --------------------------------------------------------------------------
 
 @router.callback_query(F.data == "set:dicts")
 async def cb_dicts(cb: CallbackQuery, user: User):

@@ -1,4 +1,4 @@
-"""👋 Увольнение: причина, дата, комментарий; сотрудник остается в базе."""
+"""Dismissal flow; employee stays in DB."""
 
 import logging
 from datetime import date

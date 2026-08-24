@@ -1,4 +1,4 @@
-"""Разовая выдача роли администратора пользователю из ADMIN_IDS."""
+"""One-off admin role grant from ADMIN_IDS."""
 
 import asyncio
 import sys

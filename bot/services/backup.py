@@ -1,4 +1,4 @@
-"""Ежедневное резервное копирование всех листов в локальную папку backups/."""
+"""Daily backup of all sheets into backups/."""
 
 import logging
 import time

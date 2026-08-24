@@ -1,4 +1,4 @@
-"""Тесты бутстрапа первого администратора."""
+"""First-admin bootstrap tests."""
 
 import asyncio
 import sys
@@ -28,7 +28,7 @@ def test_first_user_becomes_admin():
     claimed = asyncio.run(auth.try_claim_first_admin(777, "Тест Юзер"))
     assert claimed is True
 
-    # Второй раз уже нельзя — пользователь существует
+    # second claim fails: user exists
     claimed2 = asyncio.run(auth.try_claim_first_admin(888, "Второй"))
     assert claimed2 is False
 

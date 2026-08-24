@@ -1,4 +1,4 @@
-"""📊 HR-отчет с фильтром периода."""
+"""HR report with period filter."""
 
 from datetime import date, timedelta
 
@@ -64,8 +64,8 @@ async def build_report(db: SheetsDB, period_kind: str) -> str:
         bd = e.bday_date()
         if not bd:
             continue
-        occ = birthday_occurrence(bd, today)  # будущие
-        # проверяем и текущий год (если ДР уже прошел в этом году)
+        occ = birthday_occurrence(bd, today)
+        # check current year too
         try:
             this_year = bd.replace(year=r[0].year)
         except ValueError:
@@ -81,7 +81,7 @@ async def build_report(db: SheetsDB, period_kind: str) -> str:
         if not h:
             continue
         y, _, _ = diff_ymd(h, today)
-        for n in range(y + 4):  # покрывает прошлый месяц тоже
+        for n in range(y + 4):  # covers previous month too
             occ = add_years(h, n)
             if _in_range(occ, r):
                 annivs += 1
