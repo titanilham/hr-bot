@@ -118,8 +118,10 @@ async def cb_filter_dicts(cb: CallbackQuery, db: SheetsDB):
 
 @router.callback_query(F.data.startswith("empl:"))
 async def cb_list(cb: CallbackQuery, db: SheetsDB):
-    _, key, page_s = cb.data.split(":")
-    page = max(0, int(page_s))
+    parts = cb.data.split(":")
+    key = parts[1] if len(parts) > 1 else "all"
+    # Кнопки из справочника могут прийти без страницы (empl:dep-0) — считаем её первой
+    page = max(0, int(parts[2])) if len(parts) > 2 and parts[2].lstrip("-").isdigit() else 0
     today = date.today()
     dicts = await db.dicts()
     title, pred = resolve_filter(dicts, key, today)

@@ -48,7 +48,7 @@ class RecordingBot(Bot):
         rows = []
         ik = getattr(markup, "inline_keyboard", None) if markup is not None else None
         if ik:
-            rows = [[b.text for b in row] for row in ik]
+            rows = [[f"{b.text}|{b.callback_data}" for b in row] for row in ik]
         self.markups.append(rows)
         return True
 
@@ -122,6 +122,16 @@ async def main() -> int:
     def last_markup() -> list[list[str]]:
         return bot.markups[-1] if bot.markups else []
 
+    def cb_from_last_markup(substr: str) -> str | None:
+        for row in last_markup():
+            for btn in row:
+                if substr in btn:
+                    return btn.split("|", 1)[1]
+        return None
+
+    def has_in_last_markup(substr: str) -> bool:
+        return any(substr in btn for row in last_markup() for btn in row)
+
     # 1. /start -> меню
     await send("/start")
     check("меню открывается", any("HR" in t for t in last_texts()))
@@ -138,6 +148,23 @@ async def main() -> int:
     check("сетка списка 2 в ряд",
           bool(grid) and len(grid[0]) == 2,
           str(grid[:2]))
+
+    # 3a. Фильтры по отделам/филиалам: тапаем РЕАЛЬНЫЕ кнопки из рендера
+    dicts = await db.dicts()
+    await tap("fdep")
+    check("выбор отдела", any("отдел" in t.lower() for t in last_texts()))
+    dep_cb = cb_from_last_markup("empl:dep-")
+    if dicts.departments and dep_cb:
+        await tap(dep_cb)  # честный формат кнопки, каким его видит Telegram
+        check("фильтр по отделу (реальная кнопка)",
+              any("Отдел:" in t for t in last_texts()), str(last_texts(1)))
+    await tap("emp")
+    await tap("fbr")
+    br_cb = cb_from_last_markup("empl:br-")
+    if dicts.branches and br_cb:
+        await tap(br_cb)
+        check("фильтр по филиалу (реальная кнопка)",
+              any("Филиал:" in t for t in last_texts()), str(last_texts(1)))
 
     # 4. работающие
     await tap("empl:act:0")
