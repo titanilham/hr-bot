@@ -172,11 +172,13 @@ async def main() -> int:
     check("результаты поиска", any("Найдено" in t for t in last_texts()))
 
     # 13. мастер добавления (до предпросмотра, без сохранения)
+    import time as _time
+    uniq_phone = "+7 70" + str(int(_time.time()) % 100000000)
     await tap("add")
     check("шаг ФИО", any("ФИО" in t for t in last_texts()))
     await send("Е2е Тестовый Сотрудник")
     check("шаг телефон", any("елефон" in t for t in last_texts()))
-    await send("+7 701 555 66 77")
+    await send(uniq_phone)
     check("выбор отдела", any("Отдел" in t for t in last_texts()))
     if dicts.departments:
         await tap("addd:dept:0")
@@ -216,16 +218,24 @@ async def main() -> int:
     check("сотрудник сохранен", any("сохранен" in t.lower() for t in saved_tail),
           str(saved_tail))
 
-    new_emp = None
-    want_phone = "+77015556677"
-    for _ in range(10):
-        for e in await db.get_employees(fresh=True):
-            if e.phone.replace(" ", "") == want_phone:
-                new_emp = e
-                break
-        if new_emp:
+    import re as _re
+    new_eid = None
+    for t in reversed(saved_tail):
+        m = _re.search(r"EMP-\d{4}", t)
+        if m:
+            new_eid = m.group(0)
             break
-        await asyncio.sleep(0.5)
+
+    new_emp = None
+    if new_eid:
+        for _ in range(10):
+            for e in await db.get_employees(fresh=True):
+                if e.eid == new_eid:
+                    new_emp = e
+                    break
+            if new_emp:
+                break
+            await asyncio.sleep(0.5)
     check("новый сотрудник в таблице", new_emp is not None)
 
     # 14. полный цикл перевода со пропусками (без записи в таблицу)
@@ -257,7 +267,8 @@ async def main() -> int:
 
     # 16. увольнение с подтверждением (полный путь записи)
     await tap(f"fire:{other.eid}")
-    check("увольнение: выбор причины", any("ыберите причину" in t for t in last_texts()))
+    check("увольнение: выбор причины", any("ыберите причину" in t for t in last_texts()),
+          str(last_texts(2)))
     await tap("fri:0")
     check("увольнение: дата", any("ата увольнения" in t for t in last_texts()))
     await tap("frdtoday")

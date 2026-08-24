@@ -109,8 +109,12 @@ async def _store_and_next(message_or_cb, state, field, value):
 @router.callback_query(StateFilter(Transfer.pos, Transfer.dept, Transfer.sup),
                        F.data.startswith("xfskip_"))
 async def cb_xfer_skip(cb: CallbackQuery, state: FSMContext):
-    SKIP_TO_FIELD = {"pos": "pos", "dept": "dept", "sup": "supervisor"}
-    field = SKIP_TO_FIELD[cb.data.split("_", 1)[1]]
+    suffix = cb.data.split("_", 1)[1]
+    field = {"pos": "pos", "dept": "dept",
+             "sup": "supervisor", "supervisor": "supervisor"}.get(suffix)
+    if field is None:
+        await cb.answer()
+        return
     await _store_and_next(cb, state, field, "")
 
 

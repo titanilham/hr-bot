@@ -161,8 +161,7 @@ class SheetsDB:
         return emps
 
     def _get_employees_sync(self) -> list[Employee]:
-        with self._lock:
-            values = self._ws_of(SH_EMPLOYEES).get_all_values()
+        values = self._retry_sync(lambda: self._ws_of(SH_EMPLOYEES).get_all_values())
         return [
             Employee.from_row(r, i)
             for i, r in enumerate(values, start=1)
