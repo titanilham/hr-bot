@@ -301,6 +301,67 @@ async def main() -> int:
     check("просмотр отделов", any(dicts.departments[0] in t for t in last_texts())
           if dicts.departments else False)
 
+    # 18a. Смена роли: безопасная механика вместо слепого цикла
+    def last_answer() -> str:
+        ans = [t for name, t in bot.sent if name == "AnswerCallbackQuery"]
+        return ans[-1] if ans else ""
+
+    from bot.models import ROLE_ADMIN, ROLE_HR, ROLE_MANAGER
+
+    OTHER_UID = 999000001
+    await db.user_upsert(OTHER_UID, "Е2е Второй", ROLE_HR)
+    auth.invalidate(OTHER_UID)
+
+    await tap(f"urole:{UID}")
+    check("сменить роль на себе запрещена",
+          "собственную роль" in last_answer(), last_answer())
+
+    await tap(f"urole:{OTHER_UID}")
+    check("меню выбора роли открывается",
+          any("Выберите новую роль" in t for t in last_texts()), str(last_texts(1)))
+    other_after_menu = await db.user_find(OTHER_UID)
+    check("роль не изменилась без подтверждения",
+          other_after_menu is not None and other_after_menu.role == ROLE_HR)
+
+    await tap(f"uset:{OTHER_UID}:{ROLE_ADMIN}")
+    other_promoted = await db.user_find(OTHER_UID)
+    check("роль применена по подтверждению",
+          other_promoted is not None and other_promoted.role == ROLE_ADMIN)
+
+    await tap(f"uset:{OTHER_UID}:{ROLE_MANAGER}")
+    other_demoted = await db.user_find(OTHER_UID)
+    check("понижение второго админа работает при двух админах",
+          other_demoted is not None and other_demoted.role == ROLE_MANAGER)
+
+    # последний админ: временно понижаем себя до HR, в системе остается один админ
+    me_before = await db.user_find(UID)
+    await db.user_upsert(UID, me_before.name, ROLE_HR,
+                         notifications=me_before.notifications)
+    auth.invalidate(UID)
+    await db.user_upsert(OTHER_UID, other_demoted.name, ROLE_ADMIN,
+                         notifications=other_demoted.notifications)
+
+    await tap(f"uset:{OTHER_UID}:{ROLE_MANAGER}")
+    check("нельзя понизить последнего админа",
+          "администратор" in last_answer(), last_answer())
+    still_admin = await db.user_find(OTHER_UID)
+    check("роль последнего админа не изменилась",
+          still_admin is not None and still_admin.role == ROLE_ADMIN)
+
+    await tap(f"udel:{OTHER_UID}")
+    check("нельзя удалить последнего админа",
+          "последнего администратора" in last_answer(), last_answer())
+
+    # восстановление: снова админ, второй возвращаем в manager
+    await db.user_upsert(UID, me_before.name, ROLE_ADMIN,
+                         notifications=me_before.notifications)
+    auth.invalidate(UID)
+    await tap(f"uset:{OTHER_UID}:{ROLE_MANAGER}")
+    restored_other = await db.user_find(OTHER_UID)
+    check("после восстановления смена роли работает",
+          restored_other is not None and restored_other.role == ROLE_MANAGER)
+    await db.user_delete(OTHER_UID)
+
     # 19. остальные периоды отчета
     for kind, label in (("rep:t", "Сегодня"), ("rep:w", "Эта неделя"), ("rep:pm", "Прошлый месяц")):
         await tap(kind)

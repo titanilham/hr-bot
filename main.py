@@ -83,7 +83,7 @@ async def main() -> None:
     notify_task = asyncio.create_task(
         scheduler_loop(bot, db, auth, cfg, events_kb=_events_kb))
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, drop_pending_updates=True)
     finally:
         notify_task.cancel()
         await asyncio.gather(notify_task, return_exceptions=True)

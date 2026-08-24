@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import bot.keyboards as kb
-from bot.models import DICT_COLUMNS, ROLE_TITLES, ROLE_MANAGER, User
+from bot.models import DICT_COLUMNS, ROLE_ADMIN, ROLE_TITLES, User
 from bot.services.auth import AuthService
 from bot.services.sheets import SheetsDB
 
@@ -140,17 +140,48 @@ async def cb_users(cb: CallbackQuery, db: SheetsDB, auth: AuthService, user: Use
 
 
 @router.callback_query(F.data.startswith("urole:"))
-async def cb_cycle_role(cb: CallbackQuery, db: SheetsDB, auth: AuthService, user: User):
+async def cb_role_menu(cb: CallbackQuery, db: SheetsDB, user: User):
+    """Открывает выбор роли явно. Ничего не меняет без подтверждения."""
     if not await _guard(cb, user):
         return
     uid = int(cb.data.split(":")[1])
+    if uid == user.uid:
+        # Защита от само-понижения: последний админ может заблокировать панель.
+        await cb.answer("Нельзя изменить собственную роль", show_alert=True)
+        return
     target = await db.user_find(uid)
     if not target:
         await cb.answer("Пользователь не найден", show_alert=True)
         return
-    order = {"admin": "hr", "hr": "manager", "manager": "admin"}
-    new_role = order.get(target.role, ROLE_MANAGER)
-    await db.user_upsert(uid, target.name, new_role, target.notifications, added_by=user.name)
+    await cb.answer()
+    await cb.message.answer(
+        f"Выберите новую роль для «{target.name or uid}» (сейчас: "
+        f"{ROLE_TITLES.get(target.role, target.role)}):",
+        reply_markup=kb.roles_keyboard(f"uset:{uid}:", "set:users"))
+
+
+@router.callback_query(F.data.startswith("uset:"))
+async def cb_role_apply(cb: CallbackQuery, db: SheetsDB, auth: AuthService, user: User):
+    if not await _guard(cb, user):
+        return
+    parts = cb.data.split(":")          # uset:<uid>:<role>
+    if len(parts) != 3 or parts[2] not in ROLE_TITLES:
+        await cb.answer("Некорректная команда", show_alert=True)
+        return
+    uid, new_role = int(parts[1]), parts[2]
+    if uid == user.uid:
+        await cb.answer("Нельзя изменить собственную роль", show_alert=True)
+        return
+    target = await db.user_find(uid)
+    if not target:
+        await cb.answer("Пользователь не найден", show_alert=True)
+        return
+    admins = [u for u in await db.users_all() if u.role == ROLE_ADMIN]
+    if target.role == ROLE_ADMIN and new_role != ROLE_ADMIN and len(admins) <= 1:
+        await cb.answer("Должен остаться хотя бы один администратор", show_alert=True)
+        return
+    await db.user_upsert(uid, target.name, new_role, target.notifications,
+                         added_by=user.name)
     auth.invalidate(uid)
     await cb.answer(f"Роль: {ROLE_TITLES[new_role]}")
     await _render_users(cb, db, auth, user)
@@ -163,6 +194,14 @@ async def cb_del_user(cb: CallbackQuery, db: SheetsDB, auth: AuthService, user: 
     uid = int(cb.data.split(":")[1])
     if uid == user.uid:
         await cb.answer("Нельзя удалить самого себя", show_alert=True)
+        return
+    target = await db.user_find(uid)
+    if not target:
+        await cb.answer("Пользователь не найден", show_alert=True)
+        return
+    admins = [u for u in await db.users_all() if u.role == ROLE_ADMIN]
+    if target.role == ROLE_ADMIN and len(admins) <= 1:
+        await cb.answer("Нельзя удалить последнего администратора", show_alert=True)
         return
     ok = await db.user_delete(uid)
     auth.invalidate(uid)
