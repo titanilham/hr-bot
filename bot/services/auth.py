@@ -23,6 +23,18 @@ class AuthService:
                 await self.db.user_upsert(uid, name="admin", role=ROLE_ADMIN, added_by=".env")
                 log.info("Администратор %s добавлен из ADMIN_IDS", uid)
 
+    async def try_claim_first_admin(self, uid: int, name: str) -> bool:
+        """Если система совсем пустая (нет пользователей и админов в .env),
+        первый вошедший становится администратором."""
+        if self.cfg.admin_ids:
+            return False
+        if await self.db.users_all():
+            return False
+        await self.db.user_upsert(uid, name=name, role=ROLE_ADMIN, added_by="bootstrap")
+        self.invalidate(uid)
+        log.info("Первый пользователь %s (%s) назначен администратором", uid, name)
+        return True
+
     async def get_user(self, uid: int, refresh: bool = False) -> User | None:
         if not refresh and uid in self._cache:
             return self._cache[uid]

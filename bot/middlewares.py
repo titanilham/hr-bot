@@ -6,12 +6,15 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message
 
-from bot.models import User
+from bot.models import ROLE_ADMIN, User
 from bot.services.auth import AuthService
 
 log = logging.getLogger(__name__)
 
 DENY_TEXT = "⛔ У вас нет доступа к HR-боту.\nДоступ предоставляет администратор."
+
+FIRST_ADMIN_TEXT = ("👑 Вы первый пользователь — назначены администратором.\n"
+                    "Добавьте коллег: ⚙ Настройки → Пользователи и доступы.")
 
 
 class AccessMiddleware(BaseMiddleware):
@@ -29,6 +32,16 @@ class AccessMiddleware(BaseMiddleware):
             return
         user = await self.auth.get_user(aiogram_user.id)
         if user is None:
+            # Бутстрап: пустая система -> первый вошедший становится админом
+            if await self.auth.try_claim_first_admin(aiogram_user.id, aiogram_user.full_name):
+                user = User(uid=aiogram_user.id, name=aiogram_user.full_name,
+                            role=ROLE_ADMIN, notifications=True)
+                data["user"] = user
+                if isinstance(event, CallbackQuery):
+                    await event.answer()
+                await event.message.answer(FIRST_ADMIN_TEXT)
+                return await handler(event, data)
+
             log.info("Отказано в доступе: %s (%s)", aiogram_user.full_name, aiogram_user.id)
             text = DENY_TEXT + f"\n\nВаш Telegram ID: <code>{aiogram_user.id}</code>\nПередайте его администратору."
             if isinstance(event, CallbackQuery):
