@@ -18,3 +18,4 @@ venv/
   
 "# Release notes (local only)"  
 "/release-v1.1.md"  
+fsm_state.json 
