@@ -34,6 +34,11 @@ def now_in_tz(tz_name: str, fallback: str = "Europe/Moscow") -> datetime:
         return datetime.now(ZoneInfo(fallback))
 
 
+def digest_due(now_hhmm: str, target: str, enabled: bool, already_sent: bool) -> bool:
+    """Catch-up semantics: run once the target time has passed, not only on exact match."""
+    return bool(enabled and not already_sent and now_hhmm >= target)
+
+
 async def _send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> bool:
     try:
         await bot.send_message(chat_id, text, reply_markup=reply_markup)
@@ -103,7 +108,15 @@ async def run_daily_job(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
         await _send(bot, u.uid, digest_text(now_dt, counts), reply_markup=kb)
 
     await make_daily_backup(db)
-    log.info("Ежедневный джоб выполнен: уведомлений=%s, получателей=%s", len(pending), len(recipients))
+
+    # keep the event log bounded so daily reads stay fast
+    try:
+        await db.prune_events()
+    except Exception:  # noqa: BLE001
+        log.exception("Не удалось обрезать лист «События»")
+
+    log.info("Ежедневный джоб выполнен: уведомлений=%s, получателей=%s",
+             len(pending), len(recipients))
 
 
 async def scheduler_loop(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
@@ -117,7 +130,7 @@ async def scheduler_loop(bot: Bot, db: SheetsDB, auth: AuthService, cfg: Config,
             enabled = await db.setting_get("notifications_enabled", "1") != "0"
             today_iso = now.date().isoformat()
             already_sent = await db.setting_get("last_digest_date", "") == today_iso
-            if enabled and hhmm == target and not already_sent:
+            if digest_due(hhmm, target, enabled, already_sent):
                 # mark date BEFORE sending so restart won't resend
                 await db.setting_set("last_digest_date", today_iso)
                 await run_daily_job(bot, db, auth, cfg, events_kb,
