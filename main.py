@@ -7,12 +7,12 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import BASE_DIR, load_config
 from bot.handlers import all_routers
 from bot.middlewares import AccessMiddleware
 from bot.services.auth import AuthService
+from bot.services.fsm_storage import JSONFileStorage
 from bot.services.notifications import scheduler_loop
 from bot.services.sheets import SheetsDB, SheetsUnavailable
 
@@ -59,7 +59,9 @@ async def main() -> None:
 
     bot = Bot(cfg.bot_token,
               default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher(storage=MemoryStorage())
+    # Persistent FSM storage: wizards survive restarts.
+    storage = JSONFileStorage(cfg.fsm_file)
+    dp = Dispatcher(storage=storage)
 
     dp["db"] = db
     dp["auth"] = auth
@@ -71,7 +73,7 @@ async def main() -> None:
     dp.callback_query.middleware(AccessMiddleware(auth))
 
     me = await bot.get_me()
-    log.info("Бот @%s запущен", me.username)
+    log.info("Бот @%s запущен (FSM-хранилище: %s)", me.username, cfg.fsm_file)
 
     def _events_kb():
         from bot.keyboards import events_menu
@@ -84,6 +86,7 @@ async def main() -> None:
     finally:
         notify_task.cancel()
         await asyncio.gather(notify_task, return_exceptions=True)
+        await storage.close()
         await bot.session.close()
 
 

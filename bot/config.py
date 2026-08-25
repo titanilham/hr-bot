@@ -19,6 +19,7 @@ class Config:
     admin_ids: tuple[int, ...]
     timezone: str
     default_digest_time: str
+    fsm_file: str = "fsm_state.json"
 
 
 def _parse_admin_ids(raw: str) -> tuple[int, ...]:
@@ -28,6 +29,13 @@ def _parse_admin_ids(raw: str) -> tuple[int, ...]:
         if part.isdigit():
             ids.append(int(part))
     return tuple(ids)
+
+
+def _resolve_path(value: str, default: str) -> str:
+    p = Path((value or default).strip())
+    if not p.is_absolute():
+        p = BASE_DIR / p
+    return str(p)
 
 
 def load_config() -> Config:
@@ -40,16 +48,12 @@ def load_config() -> Config:
             + ". Скопируйте .env.example в .env и заполните значения."
         )
 
-    creds = (os.getenv("GOOGLE_CREDENTIALS_FILE") or "service_account.json").strip()
-    creds_path = Path(creds)
-    if not creds_path.is_absolute():
-        creds_path = BASE_DIR / creds_path
-
     return Config(
         bot_token=token,
         spreadsheet_id=sheet_id,
-        credentials_file=str(creds_path),
+        credentials_file=_resolve_path(os.getenv("GOOGLE_CREDENTIALS_FILE"), "service_account.json"),
         admin_ids=_parse_admin_ids(os.getenv("ADMIN_IDS") or ""),
         timezone=(os.getenv("TIMEZONE") or "Europe/Moscow").strip(),
         default_digest_time=(os.getenv("DEFAULT_DIGEST_TIME") or "09:00").strip(),
+        fsm_file=_resolve_path(os.getenv("FSM_FILE"), "fsm_state.json"),
     )
