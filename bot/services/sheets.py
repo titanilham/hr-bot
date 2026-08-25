@@ -1,4 +1,9 @@
-"""Google Sheets repository: the only IO layer."""
+"""Google Sheets repository: the only IO layer.
+
+v1.1: request throttling (anti rate-limit), race-free employee-ID allocation,
+short-lived settings cache, events pruning; locks are never held while
+sleeping between API retries.
+"""
 
 import asyncio
 import json
@@ -6,7 +11,7 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import gspread
 from gspread.exceptions import APIError
@@ -48,7 +53,10 @@ ALL_SHEETS = {
 
 EMP_ID_RE = re.compile(r"^EMP-(\d+)\b", re.IGNORECASE)
 
-CACHE_TTL = 20.0  # employees cache TTL, seconds
+CACHE_TTL = 20.0       # employees cache TTL, seconds
+SETTINGS_TTL = 90.0    # settings cache TTL, seconds (cuts periodic sheet reads)
+MIN_API_INTERVAL = 0.25  # min seconds between Google API calls (anti spam-block)
+EVENTS_KEEP_DAYS = 120   # events older than this are pruned
 
 
 class SheetsUnavailable(Exception):
@@ -70,15 +78,26 @@ class SheetsDB:
     def __init__(self, cfg: Config):
         self._cfg = cfg
         self._lock = threading.Lock()
+        self._rate_lock = threading.Lock()
         self._sh: gspread.Spreadsheet | None = None
         self._ws: dict[str, gspread.Worksheet] = {}
         self._emp_cache: tuple[float, list[Employee]] | None = None
+        self._settings_cache: tuple[float, dict[str, str]] | None = None
+        self._last_api_call = 0.0
 
+    def _throttle(self) -> None:
+        """Keep a short gap between Google API calls to avoid quota bans."""
+        with self._rate_lock:
+            wait = self._last_api_call + MIN_API_INTERVAL - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            self._last_api_call = time.monotonic()
 
     def _retry_sync(self, fn, attempts: int = 7):
         """Retry Google API quota/5xx errors with exponential backoff."""
         delay = 1.5
         for i in range(attempts):
+            self._throttle()
             try:
                 return fn()
             except APIError as e:
@@ -89,6 +108,11 @@ class SheetsDB:
                     delay = min(delay * 2, 45)
                 else:
                     raise
+
+    @staticmethod
+    def _backoff_sleep(attempt: int) -> float:
+        """Sleep used by lock-scoped retry loops; called WITHOUT holding locks."""
+        return min(1.5 * (2 ** attempt), 45)
 
     def _connect_sync(self):
         try:
@@ -101,22 +125,23 @@ class SheetsDB:
         await asyncio.to_thread(self._ensure_structure_sync)
 
     def _ensure_structure_sync(self):
-        with self._lock:
-            if self._sh is None:
-                self._connect_sync()
-            existing = {ws.title: ws for ws in self._sh.worksheets()}
-            for title, headers in ALL_SHEETS.items():
-                ws = existing.get(title)
-                if ws is None:
-                    log.info("Создаю лист «%s»", title)
-                    ws = self._sh.add_worksheet(title=title, rows=2000, cols=len(headers) + 4)
-                self._ws[title] = ws
-                values = self._retry_sync(ws.get_all_values)
-                if not values or not any(cell.strip() for cell in values[0]):
-                    self._retry_sync(lambda: ws.update(values=[headers], range_name="A1"))
-                elif [c.strip() for c in values[0][: len(headers)]] != headers:
-                    log.warning("Лист «%s»: заголовки отличаются от ожидаемых", title)
-            self._seed_defaults_sync()
+        # NOTE: no global lock here — network calls must never run under it.
+        if self._sh is None:
+            self._connect_sync()
+        existing = {ws.title: ws for ws in self._sh.worksheets()}
+        for title, headers in ALL_SHEETS.items():
+            ws = existing.get(title)
+            if ws is None:
+                log.info("Создаю лист «%s»", title)
+                ws = self._sh.add_worksheet(title=title, rows=2000, cols=len(headers) + 4)
+            self._ws[title] = ws
+            values = self._retry_sync(ws.get_all_values)
+            if not values or not any(cell.strip() for cell in values[0]):
+                self._retry_sync(lambda ws=ws, headers=headers: ws.update(
+                    values=[headers], range_name="A1"))
+            elif [c.strip() for c in values[0][: len(headers)]] != headers:
+                log.warning("Лист «%s»: заголовки отличаются от ожидаемых", title)
+        self._seed_defaults_sync()
 
     def _seed_defaults_sync(self):
         d_ws = self._ws[SH_DICTS]
@@ -161,10 +186,55 @@ class SheetsDB:
     async def append_employee(self, emp: Employee) -> None:
         await asyncio.to_thread(self._append_employee_sync, emp)
 
+    @staticmethod
+    def _pick_emp_id(values: list[list[str]], preferred: str) -> str:
+        """Race-free ID choice: honor preferred if free, else first free number."""
+        taken: set[str] = set()
+        max_num = 0
+        for r in values:
+            eid = r[0].strip() if r else ""
+            m = EMP_ID_RE.match(eid)
+            if m:
+                taken.add(eid.upper())
+                max_num = max(max_num, int(m.group(1)))
+        pref = (preferred or "").strip().upper()
+        if pref and EMP_ID_RE.match(pref) and pref not in taken:
+            return pref
+        n = max_num + 1
+        while f"EMP-{n:04d}" in taken:
+            n += 1
+        return f"EMP-{n:04d}"
+
     def _append_employee_sync(self, emp: Employee):
-        self._retry_sync(lambda: self._ws_of(SH_EMPLOYEES).append_row(
-            emp.to_row(), value_input_option="RAW"))
-        self._invalidate_cache()
+        """Append with unique-ID guarantee.
+
+        The read-allocate-append sequence is serialized by ``self._lock`` so two
+        concurrent saves can never get the same ID. On retryable API errors the
+        lock is released BEFORE sleeping, so parallel writes are never blocked
+        by backoff waits.
+        """
+        last_exc: APIError | None = None
+        for attempt in range(7):
+            try:
+                with self._lock:
+                    ws = self._ws_of(SH_EMPLOYEES)
+                    self._throttle()
+                    values = ws.get_all_values()
+                    emp.eid = self._pick_emp_id(values, emp.eid)
+                    self._throttle()
+                    ws.append_row(emp.to_row(), value_input_option="RAW")
+                self._invalidate_cache()
+                return
+            except APIError as e:
+                if getattr(e, "code", None) in RETRYABLE_CODES:
+                    last_exc = e
+                    log.warning("append_employee: Sheets API %s, retry #%d in %.1fs",
+                                getattr(e, "code", None), attempt + 1,
+                                self._backoff_sleep(attempt))
+                    time.sleep(self._backoff_sleep(attempt))  # lock released here
+                else:
+                    raise
+        raise last_exc  # type: ignore[misc]
 
     async def update_employee(self, emp: Employee) -> None:
         if not emp.row:
@@ -173,14 +243,23 @@ class SheetsDB:
 
     def _update_employee_sync(self, emp: Employee):
         last = _col_letter(len(EMPLOYEE_COLUMNS))
-
-        def _do():
-            with self._lock:
-                self._ws_of(SH_EMPLOYEES).update(
-                    values=[emp.to_row()], range_name=f"A{emp.row}:{last}{emp.row}"
-                )
-        self._retry_sync(_do)
-        self._invalidate_cache()
+        range_name = f"A{emp.row}:{last}{emp.row}"
+        last_exc: APIError | None = None
+        for attempt in range(7):
+            try:
+                with self._lock:
+                    self._throttle()
+                    self._ws_of(SH_EMPLOYEES).update(values=[emp.to_row()],
+                                                     range_name=range_name)
+                self._invalidate_cache()
+                return
+            except APIError as e:
+                if getattr(e, "code", None) in RETRYABLE_CODES:
+                    last_exc = e
+                    time.sleep(self._backoff_sleep(attempt))  # lock released here
+                else:
+                    raise
+        raise last_exc  # type: ignore[misc]
 
     async def find_employee_by_id(self, eid: str) -> Employee | None:
         eid = eid.strip().upper()
@@ -190,7 +269,7 @@ class SheetsDB:
         return None
 
     async def next_emp_id(self) -> str:
-        emps = await self.get_employees()
+        emps = await self.get_employees(fresh=True)
         max_num = 0
         for e in emps:
             m = EMP_ID_RE.match(e.eid.strip())
@@ -233,6 +312,30 @@ class SheetsDB:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_EVENTS)
         return {r[2].strip() for r in rows[1:] if len(r) > 2 and r[2].strip()}
 
+    async def prune_events(self, keep_days: int = EVENTS_KEEP_DAYS) -> int:
+        """Delete event-log rows older than keep_days; returns removed count."""
+        return await asyncio.to_thread(self._prune_events_sync, keep_days)
+
+    def _prune_events_sync(self, keep_days: int) -> int:
+        ws = self._ws_of(SH_EVENTS)
+        values = self._retry_sync(ws.get_all_values)
+        cutoff = datetime.now() - timedelta(days=keep_days)
+        doomed: list[int] = []
+        for i, r in enumerate(values, start=1):
+            if i == 1 or not r or not r[0].strip():
+                continue
+            try:
+                sent_day = datetime.strptime(r[0].strip(), "%d.%m.%Y")
+            except ValueError:
+                continue  # unparsable date: leave the row alone
+            if sent_day < cutoff:
+                doomed.append(i)
+        for idx in sorted(doomed, reverse=True):
+            self._retry_sync(lambda idx=idx: ws.delete_rows(idx))
+        if doomed:
+            log.info("События: удалено устаревших записей: %d", len(doomed))
+        return len(doomed)
+
 
     async def dicts(self) -> Dicts:
         rows = await asyncio.to_thread(self._get_rows_sync, SH_DICTS)
@@ -262,20 +365,25 @@ class SheetsDB:
         start = max(existing, 1) + 1
         col = _col_letter(dict_index + 1)
         payload = [[v] for v in values]
-
-        def _do():
-            with self._lock:
-                self._ws_of(SH_DICTS).update(
-                    values=payload,
-                    range_name=f"{col}{start}:{col}{start + len(values) - 1}")
-        self._retry_sync(_do)
+        range_name = f"{col}{start}:{col}{start + len(values) - 1}"
+        last_exc: APIError | None = None
+        for attempt in range(7):
+            try:
+                with self._lock:
+                    self._throttle()
+                    self._ws_of(SH_DICTS).update(values=payload, range_name=range_name)
+                return
+            except APIError as e:
+                if getattr(e, "code", None) in RETRYABLE_CODES:
+                    last_exc = e
+                    time.sleep(self._backoff_sleep(attempt))  # lock released here
+                else:
+                    raise
+        raise last_exc  # type: ignore[misc]
 
     def _dict_append_sync(self, dict_index: int, value: str):
-        def _do():
-            with self._lock:
-                self._ws_of(SH_DICTS).append_row(
-                    [""] * dict_index + [value], value_input_option="RAW")
-        self._retry_sync(_do)
+        self._retry_sync(lambda: self._ws_of(SH_DICTS).append_row(
+            [""] * dict_index + [value], value_input_option="RAW"))
 
 
     async def users_all(self) -> list[User]:
@@ -345,14 +453,19 @@ class SheetsDB:
 
 
     async def setting_get(self, key: str, default: str = "") -> str:
-        rows = await asyncio.to_thread(self._get_rows_sync, SH_SETTINGS)
-        for r in rows[1:]:
-            if r and r[0].strip() == key:
-                return r[1].strip() if len(r) > 1 else ""
-        return default
+        if (self._settings_cache is None
+                or time.monotonic() - self._settings_cache[0] > SETTINGS_TTL):
+            rows = await asyncio.to_thread(self._get_rows_sync, SH_SETTINGS)
+            kv = {}
+            for r in rows[1:]:
+                if r and r[0].strip():
+                    kv[r[0].strip()] = r[1].strip() if len(r) > 1 else ""
+            self._settings_cache = (time.monotonic(), kv)
+        return self._settings_cache[1].get(key, default)
 
     async def setting_set(self, key: str, value: str) -> None:
         await asyncio.to_thread(self._setting_set_sync, key, value)
+        self._settings_cache = None  # invalidate so readers see the new value
 
     def _setting_set_sync(self, key, value):
         ws = self._ws_of(SH_SETTINGS)
