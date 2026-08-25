@@ -15,7 +15,9 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
-  
-"# Release notes (local only)"  
-"/release-v1.1.md"  
-fsm_state.json 
+
+# Release notes (local only)
+/release-v1.1.md
+
+# Runtime FSM storage
+fsm_state.json
