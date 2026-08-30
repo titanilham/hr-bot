@@ -1,4 +1,6 @@
-<img src="https://readme-typing-svg.demolab.com?font=ubuntu&size=22&pause=1000&color=27A3E3&width=435&lines=+HR+Bot+%E2%80%94+Telegram+%2B+Google+Sheets" alt="Typing SVG" />
+<div align="center">
+<img src="https://readme-typing-svg.demolab.com?font=ubuntu&size=24&pause=1000&color=27A3E3&center=true&vCenter=true&width=435&lines=+HR+Bot+-+Telegram+%2B+Google+Sheets" alt="Typing SVG" />
+</div>
 
 Telegram-бот для HR-отдела: учет сотрудников, кадровые изменения, уведомления и отчеты.
 **Google Sheets** — основная база данных: все изменения сразу видны в таблице.
